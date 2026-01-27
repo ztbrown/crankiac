@@ -1,0 +1,17 @@
+[project]
+name = "letterboxd-sync"
+version = "0.1.0"
+description = "A three-tier web application walking skeleton"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: Unit tests (fast, isolated)",
+    "integration: Integration tests (API + database)",
+    "acceptance: Acceptance tests (full stack, browser)",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]
