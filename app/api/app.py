@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
 from app.api.routes import api
+from app.api.transcript_routes import transcript_api
 from app.data.database import init_db
 from app.config import Config
 
@@ -10,6 +11,7 @@ def create_app():
     CORS(app)
 
     app.register_blueprint(api)
+    app.register_blueprint(transcript_api)
 
     # Serve the UI
     @app.route("/")
