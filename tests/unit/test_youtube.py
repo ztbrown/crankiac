@@ -1,6 +1,9 @@
 """Tests for YouTube client and matching logic."""
+import json
 import pytest
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from app.youtube.client import (
@@ -9,6 +12,10 @@ from app.youtube.client import (
     normalize_title,
     extract_episode_number,
     match_episode_to_video,
+    is_free_monday_episode,
+    save_videos_to_json,
+    load_videos_from_json,
+    _parse_duration,
 )
 
 
@@ -158,3 +165,126 @@ class TestYouTubeClient:
         assert videos[0].video_id == "test123"
         assert videos[0].title == "Test Video Title"
         assert videos[0].url == "https://www.youtube.com/watch?v=test123"
+
+
+class TestParseDuration:
+    def test_parses_hours_minutes_seconds(self):
+        assert _parse_duration("PT1H30M15S") == 5415  # 1*3600 + 30*60 + 15
+
+    def test_parses_minutes_seconds(self):
+        assert _parse_duration("PT45M30S") == 2730  # 45*60 + 30
+
+    def test_parses_minutes_only(self):
+        assert _parse_duration("PT30M") == 1800  # 30*60
+
+    def test_parses_hours_only(self):
+        assert _parse_duration("PT2H") == 7200  # 2*3600
+
+    def test_returns_none_for_empty(self):
+        assert _parse_duration("") is None
+
+    def test_returns_none_for_invalid(self):
+        assert _parse_duration("invalid") is None
+
+
+class TestIsFreeMondayEpisode:
+    def test_free_in_title(self):
+        video = YouTubeVideo(
+            video_id="abc",
+            title="Episode 500 (Free)",
+            published_at=datetime(2024, 1, 15, 12, 0),  # Monday
+            url="https://youtube.com/watch?v=abc",
+        )
+        assert is_free_monday_episode(video) is True
+
+    def test_free_preview_in_title(self):
+        video = YouTubeVideo(
+            video_id="abc",
+            title="Episode 500 free preview",
+            published_at=datetime(2024, 1, 16, 12, 0),  # Tuesday
+            url="https://youtube.com/watch?v=abc",
+        )
+        assert is_free_monday_episode(video) is True
+
+    def test_monday_with_long_duration(self):
+        video = YouTubeVideo(
+            video_id="abc",
+            title="Episode 500: The Big One",
+            published_at=datetime(2024, 1, 15, 12, 0),  # Monday
+            url="https://youtube.com/watch?v=abc",
+            duration_seconds=4500,  # 1.25 hours
+        )
+        assert is_free_monday_episode(video) is True
+
+    def test_monday_with_episode_number_no_duration(self):
+        video = YouTubeVideo(
+            video_id="abc",
+            title="Episode 500: The Big One",
+            published_at=datetime(2024, 1, 15, 12, 0),  # Monday
+            url="https://youtube.com/watch?v=abc",
+        )
+        assert is_free_monday_episode(video) is True
+
+    def test_short_clip_on_monday(self):
+        video = YouTubeVideo(
+            video_id="abc",
+            title="Funny Clip",
+            published_at=datetime(2024, 1, 15, 12, 0),  # Monday
+            url="https://youtube.com/watch?v=abc",
+            duration_seconds=300,  # 5 minutes
+        )
+        assert is_free_monday_episode(video) is False
+
+    def test_tuesday_long_episode(self):
+        video = YouTubeVideo(
+            video_id="abc",
+            title="Episode 500: The Big One",
+            published_at=datetime(2024, 1, 16, 12, 0),  # Tuesday
+            url="https://youtube.com/watch?v=abc",
+            duration_seconds=4500,
+        )
+        assert is_free_monday_episode(video) is False
+
+
+class TestSaveLoadVideos:
+    def test_save_and_load_round_trip(self):
+        videos = [
+            YouTubeVideo(
+                video_id="abc123",
+                title="Episode 500: Test",
+                published_at=datetime(2024, 1, 15, 12, 0),
+                url="https://youtube.com/watch?v=abc123",
+                duration_seconds=3600,
+            ),
+            YouTubeVideo(
+                video_id="def456",
+                title="Episode 501: Another Test",
+                published_at=datetime(2024, 1, 22, 12, 0),
+                url="https://youtube.com/watch?v=def456",
+                duration_seconds=4200,
+            ),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "videos.json"
+            save_videos_to_json(videos, str(path))
+
+            # Verify file exists and is valid JSON
+            assert path.exists()
+            with open(path) as f:
+                data = json.load(f)
+            assert len(data) == 2
+            assert data[0]["video_id"] == "abc123"
+            assert data[0]["is_free_monday"] is True  # Monday + duration >= 1hr
+
+            # Load back
+            loaded = load_videos_from_json(str(path))
+            assert len(loaded) == 2
+            assert loaded[0].video_id == "abc123"
+            assert loaded[0].duration_seconds == 3600
+
+    def test_save_creates_parent_dirs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "nested" / "dir" / "videos.json"
+            save_videos_to_json([], str(path))
+            assert path.exists()
