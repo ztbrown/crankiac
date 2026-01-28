@@ -42,8 +42,8 @@ function displayResults(results, query) {
 
     const html = results
         .map(
-            (item) => `
-            <div class="result-item">
+            (item, index) => `
+            <div class="result-item" data-result-index="${index}">
                 <div class="result-header">
                     <a href="${getPatreonUrl(item.patreon_id)}"
                        target="_blank"
@@ -59,14 +59,79 @@ function displayResults(results, query) {
                        class="episode-link">
                         ${escapeHtml(item.episode_title)}
                     </a>
+                    <button class="expand-btn"
+                            data-episode-id="${item.episode_id}"
+                            data-segment-index="${item.segment_index}"
+                            title="Show more context">
+                        <span class="expand-icon">⋯</span>
+                    </button>
                 </div>
-                <p class="context">${highlightMatch(item.context || item.word, query)}</p>
+                <div class="context-container">
+                    <p class="context">${highlightMatch(item.context || item.word, query)}</p>
+                </div>
             </div>
         `
         )
         .join("");
 
     resultsContainer.innerHTML = html;
+
+    // Store results for later reference
+    resultsContainer.dataset.query = query;
+    window.currentResults = results;
+
+    // Add click handlers to expand buttons
+    document.querySelectorAll(".expand-btn").forEach(btn => {
+        btn.addEventListener("click", handleExpandClick);
+    });
+}
+
+async function handleExpandClick(event) {
+    const btn = event.currentTarget;
+    const resultItem = btn.closest(".result-item");
+    const contextContainer = resultItem.querySelector(".context-container");
+    const episodeId = btn.dataset.episodeId;
+    const segmentIndex = btn.dataset.segmentIndex;
+    const query = resultsContainer.dataset.query;
+
+    // Check if already expanded
+    if (resultItem.classList.contains("expanded")) {
+        // Collapse: restore original context
+        const resultIndex = parseInt(resultItem.dataset.resultIndex);
+        const originalItem = window.currentResults[resultIndex];
+        contextContainer.innerHTML = `<p class="context">${highlightMatch(originalItem.context || originalItem.word, query)}</p>`;
+        resultItem.classList.remove("expanded");
+        btn.querySelector(".expand-icon").textContent = "⋯";
+        btn.title = "Show more context";
+        return;
+    }
+
+    // Show loading state
+    btn.disabled = true;
+    btn.querySelector(".expand-icon").textContent = "⏳";
+
+    try {
+        const response = await fetch(
+            `/api/transcripts/context?episode_id=${episodeId}&segment_index=${segmentIndex}&radius=50`
+        );
+
+        if (!response.ok) {
+            throw new Error("Failed to fetch context");
+        }
+
+        const data = await response.json();
+
+        // Display expanded context
+        contextContainer.innerHTML = `<p class="context expanded-context">${highlightMatch(data.context, query)}</p>`;
+        resultItem.classList.add("expanded");
+        btn.querySelector(".expand-icon").textContent = "−";
+        btn.title = "Show less context";
+    } catch (error) {
+        console.error("Error fetching context:", error);
+        btn.querySelector(".expand-icon").textContent = "!";
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 function highlightMatch(text, query) {

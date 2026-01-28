@@ -87,6 +87,7 @@ def search_single_word(word: str, limit: int, offset: int) -> tuple[list[dict], 
                 "word": row["word"],
                 "start_time": float(row["start_time"]),
                 "end_time": float(row["end_time"]),
+                "segment_index": row["segment_index"],
                 "episode_id": row["episode_id"],
                 "episode_title": row["episode_title"],
                 "patreon_id": row["patreon_id"],
@@ -162,6 +163,7 @@ def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict]
                 "phrase": row["matched_phrase"],
                 "start_time": float(row["start_time"]),
                 "end_time": float(row["end_time"]) if row["end_time"] else None,
+                "segment_index": row["start_index"],
                 "episode_id": row["id"],
                 "episode_title": row["episode_title"],
                 "patreon_id": row["patreon_id"],
@@ -173,6 +175,69 @@ def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict]
         total = len(results) if len(results) < limit else limit * 2
 
         return results, total
+
+
+@transcript_api.route("/context")
+def get_extended_context():
+    """
+    Get extended context around a specific position in an episode.
+
+    Query params:
+        episode_id: Episode ID
+        segment_index: Center segment index
+        radius: Number of words before/after (default 50, max 200)
+
+    Returns:
+        JSON with extended context and segment info.
+    """
+    episode_id = request.args.get("episode_id", type=int)
+    segment_index = request.args.get("segment_index", type=int)
+    radius = min(int(request.args.get("radius", 50)), 200)
+
+    if not episode_id or segment_index is None:
+        return jsonify({"error": "episode_id and segment_index required"}), 400
+
+    with get_cursor(commit=False) as cursor:
+        # Get the extended context
+        cursor.execute(
+            """
+            SELECT
+                ts.word,
+                ts.segment_index,
+                ts.start_time,
+                ts.end_time
+            FROM transcript_segments ts
+            WHERE ts.episode_id = %s
+            AND ts.segment_index BETWEEN %s AND %s
+            ORDER BY ts.segment_index
+            """,
+            (episode_id, segment_index - radius, segment_index + radius)
+        )
+
+        segments = cursor.fetchall()
+        if not segments:
+            return jsonify({"error": "No segments found"}), 404
+
+        # Build context string
+        words = [row["word"] for row in segments]
+        context = " ".join(words)
+
+        # Find the center segment's position in the word list
+        center_word_index = None
+        for i, row in enumerate(segments):
+            if row["segment_index"] == segment_index:
+                center_word_index = i
+                break
+
+        return jsonify({
+            "context": context,
+            "episode_id": episode_id,
+            "center_segment_index": segment_index,
+            "center_word_index": center_word_index,
+            "start_time": float(segments[0]["start_time"]),
+            "end_time": float(segments[-1]["end_time"]),
+            "word_count": len(words)
+        })
 
 
 @transcript_api.route("/episodes")
