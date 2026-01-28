@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Applied migration 005_add_is_free_column.sql to production database
+  - Added `is_free` boolean column to episodes table (default: FALSE)
+  - Created partial index `idx_episodes_is_free` for efficient free episode queries
+
 ### Added
 - Automatic version bump system with commit message conventions
 - VERSIONING.md documenting version bump policy
