@@ -494,10 +494,39 @@ h1 {
     overflow-y: auto;
 }
 
+/* Tablet responsive styles */
+@media (max-width: 768px) {
+    .container {
+        margin: 24px auto;
+        padding: 16px;
+    }
+
+    .filters-content {
+        gap: 12px;
+    }
+
+    .filter-group {
+        flex: 1 1 auto;
+        min-width: 140px;
+    }
+
+    .date-inputs {
+        flex-wrap: wrap;
+    }
+
+    .date-inputs input {
+        width: 130px;
+    }
+
+    .otd-episode {
+        padding: 10px 14px;
+    }
+}
+
 /* Mobile responsive styles */
 @media (max-width: 600px) {
     .container {
-        margin: 16px auto;
+        margin: 12px auto;
         padding: 12px;
     }
 
@@ -514,13 +543,82 @@ h1 {
     #search-input {
         width: 100%;
         padding: 14px 12px;
+        font-size: 16px; /* Prevents iOS zoom on focus */
     }
 
     #search-button {
         width: 100%;
         padding: 14px 20px;
+        min-height: 48px; /* Touch-friendly target */
     }
 
+    /* Filters panel mobile layout */
+    .filters-panel summary {
+        padding: 14px 16px;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+    }
+
+    .filters-content {
+        padding: 12px;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .filter-group-checkbox {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .checkbox-label {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+    }
+
+    .date-inputs {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .date-inputs span {
+        text-align: center;
+    }
+
+    .date-inputs input {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .filter-group input[type="number"] {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .filter-group select {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .clear-filters-btn {
+        width: 100%;
+        min-height: 44px;
+        margin-top: 4px;
+    }
+
+    /* Results mobile layout */
     .result-item {
         padding: 12px;
     }
@@ -538,15 +636,28 @@ h1 {
         order: 2;
     }
 
-    .expand-btn {
+    .match-badge {
         order: 3;
+    }
+
+    .embed-btn {
+        order: 4;
+        min-height: 36px;
+        padding: 6px 10px;
+    }
+
+    .expand-btn {
+        order: 5;
         margin-left: 0;
+        min-height: 36px;
+        padding: 6px 12px;
     }
 
     .episode-link {
-        order: 4;
+        order: 6;
         flex-basis: 100%;
         margin-top: 4px;
+        padding: 4px 0;
     }
 
     .timestamp {
@@ -566,6 +677,88 @@ h1 {
     .no-results,
     .error {
         padding: 16px 12px;
+    }
+
+    /* On This Day mobile styles */
+    .on-this-day {
+        margin-bottom: 16px;
+    }
+
+    .otd-header h2 {
+        font-size: 14px;
+    }
+
+    .otd-episode {
+        padding: 10px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .otd-years-ago {
+        font-size: 11px;
+        padding: 3px 6px;
+    }
+
+    .otd-episode-link {
+        font-size: 13px;
+        flex-basis: calc(100% - 70px);
+    }
+
+    /* Toast mobile positioning */
+    .toast {
+        bottom: 16px;
+        left: 12px;
+        right: 12px;
+        transform: translateY(100px);
+        max-width: none;
+    }
+
+    .toast.show {
+        transform: translateY(0);
+    }
+
+    /* Footer mobile */
+    .app-footer {
+        padding: 16px;
+        margin-top: 24px;
+    }
+}
+
+/* Small phone styles */
+@media (max-width: 380px) {
+    .container {
+        padding: 8px;
+    }
+
+    h1 {
+        font-size: 1.3rem;
+    }
+
+    .result-header {
+        gap: 6px;
+    }
+
+    .timestamp {
+        font-size: 12px;
+        padding: 2px 5px;
+    }
+
+    .yt-badge,
+    .match-badge {
+        font-size: 9px;
+        padding: 2px 4px;
+    }
+
+    .otd-episode {
+        padding: 8px 10px;
+    }
+
+    .otd-years-ago {
+        font-size: 10px;
+    }
+
+    .otd-episode-link {
+        font-size: 12px;
     }
 }
 
