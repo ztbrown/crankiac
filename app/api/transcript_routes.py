@@ -244,6 +244,76 @@ def get_extended_context():
         })
 
 
+@transcript_api.route("/on-this-day")
+def on_this_day():
+    """
+    Get episodes from the same calendar date in previous years.
+
+    Query params:
+        month: Month (1-12), defaults to current month
+        day: Day (1-31), defaults to current day
+        limit: Max results (default 50, max 200)
+
+    Returns:
+        JSON with episodes from the same month/day in previous years.
+    """
+    from datetime import date
+
+    today = date.today()
+    month = request.args.get("month", type=int, default=today.month)
+    day = request.args.get("day", type=int, default=today.day)
+    limit = min(int(request.args.get("limit", 50)), 200)
+
+    # Validate month and day
+    if not (1 <= month <= 12):
+        return jsonify({"error": "month must be between 1 and 12"}), 400
+    if not (1 <= day <= 31):
+        return jsonify({"error": "day must be between 1 and 31"}), 400
+
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT
+                e.id,
+                e.patreon_id,
+                e.title,
+                e.published_at,
+                e.youtube_url,
+                e.processed,
+                COUNT(ts.id) as word_count,
+                EXTRACT(YEAR FROM e.published_at) as year
+            FROM episodes e
+            LEFT JOIN transcript_segments ts ON e.id = ts.episode_id
+            WHERE EXTRACT(MONTH FROM e.published_at) = %s
+            AND EXTRACT(DAY FROM e.published_at) = %s
+            AND EXTRACT(YEAR FROM e.published_at) < %s
+            GROUP BY e.id
+            ORDER BY e.published_at DESC
+            LIMIT %s
+            """,
+            (month, day, today.year, limit)
+        )
+
+        episodes = []
+        for row in cursor.fetchall():
+            episodes.append({
+                "id": row["id"],
+                "patreon_id": row["patreon_id"],
+                "title": row["title"],
+                "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+                "youtube_url": row["youtube_url"],
+                "processed": row["processed"],
+                "word_count": row["word_count"],
+                "year": int(row["year"]) if row["year"] else None
+            })
+
+        return jsonify({
+            "episodes": episodes,
+            "date": {"month": month, "day": day},
+            "years_ago": [today.year - ep["year"] for ep in episodes if ep["year"]]
+        })
+
+
 @transcript_api.route("/episodes")
 def list_episodes():
     """List all episodes with transcript status."""
