@@ -217,6 +217,44 @@ def test_transcript_search_content_type_premium(client):
         response = client.get("/api/transcripts/search?q=test&fuzzy=false&content_type=premium")
         assert response.status_code == 200
         assert response.json["filters"]["content_type"] == "premium"
+
+
+@pytest.mark.unit
+def test_fuzzy_word_search_with_filters(client):
+    """Test fuzzy word search passes filters to search function."""
+    with patch("app.api.transcript_routes.search_fuzzy_word", return_value=([], 0)) as mock:
+        response = client.get(
+            "/api/transcripts/search?q=test"
+            "&date_from=2023-01-01"
+            "&content_type=free"
+        )
+        assert response.status_code == 200
+        # Verify filters were passed to search_fuzzy_word
+        mock.assert_called_once()
+        call_args = mock.call_args
+        filters_arg = call_args[0][4]  # 5th positional arg is filters
+        assert filters_arg["date_from"] == "2023-01-01"
+        assert filters_arg["content_type"] == "free"
+
+
+@pytest.mark.unit
+def test_fuzzy_phrase_search_with_filters(client):
+    """Test fuzzy phrase search passes filters to search function."""
+    with patch("app.api.transcript_routes.search_fuzzy_phrase", return_value=([], 0)) as mock:
+        response = client.get(
+            "/api/transcripts/search?q=hello+world"
+            "&episode_number=42"
+            "&content_type=premium"
+        )
+        assert response.status_code == 200
+        # Verify filters were passed to search_fuzzy_phrase
+        mock.assert_called_once()
+        call_args = mock.call_args
+        filters_arg = call_args[0][4]  # 5th positional arg is filters
+        assert filters_arg["episode_number"] == 42
+        assert filters_arg["content_type"] == "premium"
+
+
 def test_speakers_endpoint(client):
     """Test speakers endpoint returns list of speakers."""
     mock_rows = [

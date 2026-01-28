@@ -50,12 +50,12 @@ def search_transcripts():
 
     if len(words) == 1:
         if fuzzy:
-            results, total = search_fuzzy_word(query, limit, offset, threshold)
+            results, total = search_fuzzy_word(query, limit, offset, threshold, filters)
         else:
             results, total = search_single_word(query, limit, offset, filters)
     else:
         if fuzzy:
-            results, total = search_fuzzy_phrase(words, limit, offset, threshold)
+            results, total = search_fuzzy_phrase(words, limit, offset, threshold, filters)
         else:
             results, total = search_phrase(words, limit, offset, filters)
 
@@ -161,26 +161,28 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
         return results, total
 
 
-def search_fuzzy_word(word: str, limit: int, offset: int, threshold: float) -> tuple[list[dict], int]:
+def search_fuzzy_word(word: str, limit: int, offset: int, threshold: float, filters: dict = None) -> tuple[list[dict], int]:
     """Search for a single word using trigram similarity for fuzzy matching."""
+    filters = filters or {}
+    filter_sql, filter_params = build_filter_clauses(filters)
+    filter_clause = f" AND {filter_sql}" if filter_sql else ""
+
     with get_cursor(commit=False) as cursor:
         # Set the similarity threshold for this session
         cursor.execute("SELECT set_limit(%s)", (threshold,))
 
         # Get total count of fuzzy matches
-        cursor.execute(
-            """
+        count_query = f"""
             SELECT COUNT(*) as total
             FROM transcript_segments ts
-            WHERE ts.word %% %s OR ts.word ILIKE %s
-            """,
-            (word, f"%{word}%")
-        )
+            JOIN episodes e ON ts.episode_id = e.id
+            WHERE (ts.word %% %s OR ts.word ILIKE %s){filter_clause}
+            """
+        cursor.execute(count_query, (word, f"%{word}%", *filter_params))
         total = cursor.fetchone()["total"]
 
         # Get results with context, ordered by similarity
-        cursor.execute(
-            """
+        search_query = f"""
             SELECT
                 ts.word,
                 ts.start_time,
@@ -200,12 +202,11 @@ def search_fuzzy_word(word: str, limit: int, offset: int, threshold: float) -> t
                 ) as context
             FROM transcript_segments ts
             JOIN episodes e ON ts.episode_id = e.id
-            WHERE ts.word %% %s OR ts.word ILIKE %s
+            WHERE (ts.word %% %s OR ts.word ILIKE %s){filter_clause}
             ORDER BY similarity(ts.word, %s) DESC, e.published_at DESC, ts.start_time
             LIMIT %s OFFSET %s
-            """,
-            (word, word, f"%{word}%", word, limit, offset)
-        )
+            """
+        cursor.execute(search_query, (word, word, f"%{word}%", *filter_params, word, limit, offset))
 
         results = []
         for row in cursor.fetchall():
@@ -226,13 +227,17 @@ def search_fuzzy_word(word: str, limit: int, offset: int, threshold: float) -> t
         return results, total
 
 
-def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: float) -> tuple[list[dict], int]:
+def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: float, filters: dict = None) -> tuple[list[dict], int]:
     """
     Search for a phrase with fuzzy matching on individual words.
     Finds sequences where each word is similar to the corresponding query word.
     """
     if not words:
         return [], 0
+
+    filters = filters or {}
+    filter_sql, filter_params = build_filter_clauses(filters)
+    filter_clause = f" AND {filter_sql}" if filter_sql else ""
 
     first_word = words[0]
     num_words = len(words)
@@ -243,8 +248,7 @@ def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: fl
 
         # Build similarity conditions for each word in the phrase
         # We check if consecutive words are similar to our query words
-        cursor.execute(
-            """
+        query = f"""
             WITH potential_matches AS (
                 SELECT
                     ts.episode_id,
@@ -257,7 +261,7 @@ def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: fl
                     e.youtube_url
                 FROM transcript_segments ts
                 JOIN episodes e ON ts.episode_id = e.id
-                WHERE ts.word %% %s OR ts.word ILIKE %s
+                WHERE (ts.word %% %s OR ts.word ILIKE %s){filter_clause}
             ),
             verified_matches AS (
                 SELECT pm.*,
@@ -301,8 +305,10 @@ def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: fl
             WHERE avg_similarity >= %s
             ORDER BY avg_similarity DESC, published_at DESC, start_time
             LIMIT %s OFFSET %s
-            """,
-            (first_word, first_word, f"%{first_word}%", num_words, num_words, num_words,
+            """
+        cursor.execute(
+            query,
+            (first_word, first_word, f"%{first_word}%", *filter_params, num_words, num_words, num_words,
              words, words, num_words, threshold, limit, offset)
         )
 
