@@ -57,6 +57,28 @@ class EpisodeRepository:
                 (episode_id,)
             )
 
+    def get_all(self) -> list[Episode]:
+        """Get all episodes."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute("SELECT * FROM episodes ORDER BY published_at DESC")
+            return [Episode(**row) for row in cursor.fetchall()]
+
+    def get_without_youtube(self) -> list[Episode]:
+        """Get episodes that don't have a YouTube URL."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT * FROM episodes WHERE youtube_url IS NULL ORDER BY published_at DESC"
+            )
+            return [Episode(**row) for row in cursor.fetchall()]
+
+    def update_youtube_url(self, episode_id: int, youtube_url: str) -> None:
+        """Update the YouTube URL for an episode."""
+        with get_cursor() as cursor:
+            cursor.execute(
+                "UPDATE episodes SET youtube_url = %s WHERE id = %s",
+                (youtube_url, episode_id)
+            )
+
 class TranscriptRepository:
     """Data access for transcript segments."""
 
