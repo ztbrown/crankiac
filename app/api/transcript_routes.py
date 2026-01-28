@@ -410,6 +410,59 @@ def list_speakers():
         return jsonify({"speakers": speakers})
 
 
+@transcript_api.route("/on-this-day")
+def on_this_day():
+    """
+    Get episodes published on this day in previous years.
+
+    Returns:
+        JSON with episodes that were published on today's date in past years.
+    """
+    from datetime import date
+
+    today = date.today()
+    month = today.month
+    day = today.day
+
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT
+                e.id,
+                e.patreon_id,
+                e.title,
+                e.published_at,
+                e.youtube_url,
+                e.is_free,
+                COUNT(ts.id) as word_count
+            FROM episodes e
+            LEFT JOIN transcript_segments ts ON e.id = ts.episode_id
+            WHERE EXTRACT(MONTH FROM e.published_at) = %s
+              AND EXTRACT(DAY FROM e.published_at) = %s
+            GROUP BY e.id
+            ORDER BY e.published_at DESC
+            """,
+            (month, day)
+        )
+
+        episodes = []
+        for row in cursor.fetchall():
+            episodes.append({
+                "id": row["id"],
+                "patreon_id": row["patreon_id"],
+                "title": row["title"],
+                "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+                "youtube_url": row["youtube_url"],
+                "is_free": row["is_free"],
+                "word_count": row["word_count"]
+            })
+
+        return jsonify({
+            "episodes": episodes,
+            "date": {"month": month, "day": day}
+        })
+
+
 @transcript_api.route("/search/speaker")
 def search_by_speaker():
     """
