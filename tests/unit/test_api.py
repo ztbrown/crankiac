@@ -397,3 +397,106 @@ def test_context_endpoint_invalid_radius(client):
     assert response.status_code == 400
     assert "error" in response.json
     assert "radius" in response.json["error"]
+def test_fuzzy_search_executes_correct_sql(client):
+    """Test that fuzzy search uses pg_trgm similarity function in SQL."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "kissinger",
+            "start_time": 10.5,
+            "end_time": 11.0,
+            "segment_index": 42,
+            "episode_id": 1,
+            "episode_title": "Test Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2024, 1, 15),
+            "youtube_url": "https://youtube.com/watch?v=abc123",
+            "context": "henry kissinger was secretary",
+            "similarity_score": 0.54
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=kissingur&fuzzy=true")
+        assert response.status_code == 200
+
+        # Verify SQL executions
+        calls = mock_ctx.execute.call_args_list
+        assert len(calls) >= 2, "Expected at least 2 SQL executions (count and search)"
+
+        # First call is count query - should use similarity() function with threshold
+        count_call = calls[0]
+        count_sql = count_call[0][0]
+        assert "similarity" in count_sql.lower(), "Count SQL should use similarity function"
+
+        # Second call is search query - should also contain similarity function
+        search_call = calls[1]
+        search_sql = search_call[0][0]
+        assert "similarity" in search_sql.lower(), "Search SQL should use similarity function"
+
+        # Verify threshold is passed as parameter (0.3 is the default)
+        count_params = count_call[0][1]
+        assert 0.3 in count_params, "Threshold should be passed as parameter to count query"
+
+
+@pytest.mark.unit
+def test_fuzzy_search_returns_similarity_score(client):
+    """Test that fuzzy search results include similarity scores."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "kissinger",
+            "start_time": 10.5,
+            "end_time": 11.0,
+            "segment_index": 42,
+            "episode_id": 1,
+            "episode_title": "Test Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2024, 1, 15),
+            "youtube_url": None,
+            "context": "henry kissinger was",
+            "similarity_score": 0.538
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=kissingur")
+        assert response.status_code == 200
+        data = response.json
+
+        assert data["fuzzy"] is True
+        assert len(data["results"]) == 1
+        assert "similarity" in data["results"][0]
+        assert data["results"][0]["similarity"] == 0.538
+
+
+@pytest.mark.unit
+def test_fuzzy_search_with_custom_threshold(client):
+    """Test that custom threshold is passed to the similarity query."""
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 0}
+        mock_ctx.fetchall.return_value = []
+
+        response = client.get("/api/transcripts/search?q=test&threshold=0.6")
+        assert response.status_code == 200
+
+        # Verify custom threshold was passed in the SQL parameters
+        calls = mock_ctx.execute.call_args_list
+        count_call = calls[0]
+        count_params = count_call[0][1]
+        assert 0.6 in count_params, "Custom threshold should be passed as parameter"
