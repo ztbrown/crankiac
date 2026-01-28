@@ -14,18 +14,24 @@ def process(args):
     """Run the episode processing pipeline."""
     from app.pipeline import EpisodePipeline
 
-    pipeline = EpisodePipeline(whisper_model=args.model)
+    pipeline = EpisodePipeline(
+        whisper_model=args.model,
+        cleanup_audio=not args.no_cleanup
+    )
 
-    print(f"Running pipeline (sync={not args.no_sync}, limit={args.limit})...")
+    process_limit = None if args.all else args.limit
+    print(f"Running pipeline (sync={not args.no_sync}, limit={'all' if args.all else args.limit}, cleanup={not args.no_cleanup})...")
     results = pipeline.run(
         sync=not args.no_sync,
         max_sync=args.max_sync,
-        process_limit=args.limit
+        process_limit=process_limit
     )
 
     print(f"\nResults:")
     print(f"  Episodes synced: {results['synced']}")
     print(f"  Processed: {results['processed']['success']}/{results['processed']['total']} succeeded")
+    if results['processed']['skipped']:
+        print(f"  Skipped (no audio): {results['processed']['skipped']}")
     if results['processed']['failed']:
         print(f"  Failed: {results['processed']['failed']}")
 
@@ -41,7 +47,9 @@ def main():
     process_parser.add_argument("--no-sync", action="store_true", help="Skip syncing from Patreon")
     process_parser.add_argument("--max-sync", type=int, default=100, help="Max episodes to sync")
     process_parser.add_argument("--limit", type=int, default=10, help="Max episodes to process")
+    process_parser.add_argument("--all", action="store_true", help="Process all unprocessed episodes (overrides --limit)")
     process_parser.add_argument("--model", default="base", help="Whisper model (tiny/base/small/medium/large)")
+    process_parser.add_argument("--no-cleanup", action="store_true", help="Keep audio files after transcription")
 
     args = parser.parse_args()
 
