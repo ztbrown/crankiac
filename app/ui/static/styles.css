@@ -707,6 +707,12 @@ h1 {
         padding: 6px 10px;
     }
 
+    .audio-btn {
+        order: 4;
+        min-height: 36px;
+        padding: 6px 10px;
+    }
+
     .expand-btn {
         order: 5;
         margin-left: 0;
