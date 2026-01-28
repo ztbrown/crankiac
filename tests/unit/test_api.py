@@ -122,12 +122,16 @@ def test_on_this_day_endpoint_invalid_day(client):
     assert response.status_code == 400
     assert "day" in response.json["error"]
 
+
+>>>>>>> 5f157c0 (feat: Add search filters for date range, episode number, and content type (cr-k4a8))
 def test_transcript_search_empty_query(client):
     """Test transcript search with empty query returns empty results."""
     response = client.get("/api/transcripts/search?q=")
     assert response.status_code == 200
     assert response.json["results"] == []
+<<<<<<< HEAD
     assert response.json["query"] == ""
+=======
     assert response.json["total"] == 0
 
 
@@ -177,3 +181,41 @@ def test_transcript_search_threshold_bounds(client):
         # Test upper bound
         response = client.get("/api/transcripts/search?q=test&threshold=0.99")
         assert response.json["threshold"] == 0.9
+
+def test_transcript_search_accepts_filter_params(client):
+    """Test transcript search accepts filter parameters without error."""
+    with patch("app.api.transcript_routes.search_single_word", return_value=([], 0)):
+        response = client.get(
+            "/api/transcripts/search?q=test"
+            "&date_from=2023-01-01"
+            "&date_to=2023-12-31"
+            "&episode_number=123"
+            "&content_type=free"
+        )
+        assert response.status_code == 200
+        data = response.json
+        assert "filters" in data
+        assert data["filters"]["date_from"] == "2023-01-01"
+        assert data["filters"]["date_to"] == "2023-12-31"
+        assert data["filters"]["episode_number"] == 123
+        assert data["filters"]["content_type"] == "free"
+
+
+@pytest.mark.unit
+def test_transcript_search_filters_omitted_when_empty(client):
+    """Test transcript search omits filters that are not provided."""
+    with patch("app.api.transcript_routes.search_single_word", return_value=([], 0)):
+        response = client.get("/api/transcripts/search?q=test&content_type=all")
+        assert response.status_code == 200
+        data = response.json
+        # Filters should be empty when content_type is 'all' (default)
+        assert data["filters"] == {}
+
+
+@pytest.mark.unit
+def test_transcript_search_content_type_premium(client):
+    """Test transcript search accepts premium content type filter."""
+    with patch("app.api.transcript_routes.search_single_word", return_value=([], 0)):
+        response = client.get("/api/transcripts/search?q=test&content_type=premium")
+        assert response.status_code == 200
+        assert response.json["filters"]["content_type"] == "premium"

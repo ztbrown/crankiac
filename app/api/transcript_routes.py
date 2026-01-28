@@ -15,6 +15,11 @@ def search_transcripts():
         fuzzy: Enable fuzzy matching (default true)
         threshold: Similarity threshold for fuzzy matching (default 0.3, range 0.1-0.9)
 
+        date_from: Filter by start date (ISO format, e.g., 2023-01-01)
+        date_to: Filter by end date (ISO format, e.g., 2023-12-31)
+        episode_number: Filter by episode number (parsed from title)
+        content_type: Filter by content type ('free', 'premium', or 'all')
+
     Returns:
         JSON with matches including episode info and timestamps.
     """
@@ -23,6 +28,19 @@ def search_transcripts():
     offset = int(request.args.get("offset", 0))
     fuzzy = request.args.get("fuzzy", "true").lower() != "false"
     threshold = max(0.1, min(0.9, float(request.args.get("threshold", 0.3))))
+
+    # New filter params
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+    episode_number = request.args.get("episode_number", "").strip()
+    content_type = request.args.get("content_type", "all").strip().lower()
+
+    filters = {
+        "date_from": date_from if date_from else None,
+        "date_to": date_to if date_to else None,
+        "episode_number": int(episode_number) if episode_number else None,
+        "content_type": content_type if content_type in ("free", "premium") else None,
+    }
 
     if not query:
         return jsonify({"results": [], "query": "", "total": 0})
@@ -41,6 +59,10 @@ def search_transcripts():
         else:
             results, total = search_phrase(words, limit, offset)
 
+        results, total = search_single_word(query, limit, offset, filters)
+    else:
+        results, total = search_phrase(words, limit, offset, filters)
+
     return jsonify({
         "results": results,
         "query": query,
@@ -49,26 +71,57 @@ def search_transcripts():
         "offset": offset,
         "fuzzy": fuzzy,
         "threshold": threshold if fuzzy else None
+
+        "filters": {k: v for k, v in filters.items() if v is not None}
     })
 
 
-def search_single_word(word: str, limit: int, offset: int) -> tuple[list[dict], int]:
+def build_filter_clauses(filters: dict) -> tuple[str, list]:
+    """Build SQL WHERE clauses and params from filter dict."""
+    clauses = []
+    params = []
+
+    if filters.get("date_from"):
+        clauses.append("e.published_at >= %s")
+        params.append(filters["date_from"])
+
+    if filters.get("date_to"):
+        clauses.append("e.published_at <= %s")
+        params.append(filters["date_to"] + " 23:59:59")
+
+    if filters.get("episode_number"):
+        # Match episode number in title patterns like "Episode 123", "123 -", "#123"
+        clauses.append("(e.title ~* %s)")
+        ep_num = filters["episode_number"]
+        params.append(f"(Episode\\s+{ep_num}\\b|\\b{ep_num}\\s*[-–:]|#{ep_num}\\b)")
+
+    if filters.get("content_type") == "free":
+        clauses.append("e.youtube_url IS NOT NULL")
+    elif filters.get("content_type") == "premium":
+        clauses.append("e.youtube_url IS NULL")
+
+    return " AND ".join(clauses) if clauses else "", params
+
+
+def search_single_word(word: str, limit: int, offset: int, filters: dict = None) -> tuple[list[dict], int]:
     """Search for a single word using trigram index."""
+    filters = filters or {}
+    filter_sql, filter_params = build_filter_clauses(filters)
+    filter_clause = f" AND {filter_sql}" if filter_sql else ""
+
     with get_cursor(commit=False) as cursor:
         # Get total count
-        cursor.execute(
-            """
+        count_query = f"""
             SELECT COUNT(*) as total
             FROM transcript_segments ts
-            WHERE ts.word ILIKE %s
-            """,
-            (f"%{word}%",)
-        )
+            JOIN episodes e ON ts.episode_id = e.id
+            WHERE ts.word ILIKE %s{filter_clause}
+            """
+        cursor.execute(count_query, (f"%{word}%", *filter_params))
         total = cursor.fetchone()["total"]
 
         # Get results with context
-        cursor.execute(
-            """
+        search_query = f"""
             SELECT
                 ts.word,
                 ts.start_time,
@@ -87,12 +140,11 @@ def search_single_word(word: str, limit: int, offset: int) -> tuple[list[dict], 
                 ) as context
             FROM transcript_segments ts
             JOIN episodes e ON ts.episode_id = e.id
-            WHERE ts.word ILIKE %s
+            WHERE ts.word ILIKE %s{filter_clause}
             ORDER BY e.published_at DESC, ts.start_time
             LIMIT %s OFFSET %s
-            """,
-            (f"%{word}%", limit, offset)
-        )
+            """
+        cursor.execute(search_query, (f"%{word}%", *filter_params, limit, offset))
 
         results = []
         for row in cursor.fetchall():
@@ -281,6 +333,8 @@ def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: fl
 
 
 def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict], int]:
+
+def search_phrase(words: list[str], limit: int, offset: int, filters: dict = None) -> tuple[list[dict], int]:
     """
     Search for a phrase (consecutive words).
     Finds the first word and verifies subsequent words match.
@@ -288,13 +342,16 @@ def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict]
     if not words:
         return [], 0
 
+    filters = filters or {}
+    filter_sql, filter_params = build_filter_clauses(filters)
+    filter_clause = f" AND {filter_sql}" if filter_sql else ""
+
     first_word = words[0]
     num_words = len(words)
 
     with get_cursor(commit=False) as cursor:
         # Find potential matches starting with first word
-        cursor.execute(
-            """
+        query = f"""
             WITH potential_matches AS (
                 SELECT
                     ts.episode_id,
@@ -307,7 +364,7 @@ def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict]
                     e.youtube_url
                 FROM transcript_segments ts
                 JOIN episodes e ON ts.episode_id = e.id
-                WHERE ts.word ILIKE %s
+                WHERE ts.word ILIKE %s{filter_clause}
             ),
             verified_matches AS (
                 SELECT pm.*,
@@ -336,8 +393,10 @@ def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict]
             WHERE lower(matched_phrase) LIKE lower(%s)
             ORDER BY published_at DESC, start_time
             LIMIT %s OFFSET %s
-            """,
-            (f"%{first_word}%", num_words, num_words, num_words, f"%{' '.join(words)}%", limit, offset)
+            """
+        cursor.execute(
+            query,
+            (f"%{first_word}%", *filter_params, num_words, num_words, num_words, f"%{' '.join(words)}%", limit, offset)
         )
 
         results = []

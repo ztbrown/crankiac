@@ -3,6 +3,30 @@ const searchButton = document.getElementById("search-button");
 const resultsContainer = document.getElementById("results");
 const onThisDayContainer = document.getElementById("on-this-day");
 
+const filterDateFrom = document.getElementById("filter-date-from");
+const filterDateTo = document.getElementById("filter-date-to");
+const filterEpisode = document.getElementById("filter-episode");
+const filterContentType = document.getElementById("filter-content-type");
+const clearFiltersBtn = document.getElementById("clear-filters");
+
+function getFilters() {
+    const filters = {};
+    if (filterDateFrom.value) filters.date_from = filterDateFrom.value;
+    if (filterDateTo.value) filters.date_to = filterDateTo.value;
+    if (filterEpisode.value) filters.episode_number = filterEpisode.value;
+    if (filterContentType.value !== "all") filters.content_type = filterContentType.value;
+    return filters;
+}
+
+function buildSearchUrl(query) {
+    const params = new URLSearchParams({ q: query, limit: "50" });
+    const filters = getFilters();
+    for (const [key, value] of Object.entries(filters)) {
+        params.append(key, value);
+    }
+    return `/api/transcripts/search?${params.toString()}`;
+}
+
 async function performSearch() {
     const query = searchInput.value.trim();
 
@@ -12,16 +36,27 @@ async function performSearch() {
     }
 
     try {
-        const response = await fetch(`/api/transcripts/search?q=${encodeURIComponent(query)}&limit=50`);
+        const url = buildSearchUrl(query);
+        const response = await fetch(url);
 
         if (!response.ok) {
             throw new Error("Search request failed");
         }
 
         const data = await response.json();
-        displayResults(data.results, data.query);
+        displayResults(data.results, data.query, data.filters);
     } catch (error) {
         resultsContainer.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+    }
+}
+
+function clearFilters() {
+    filterDateFrom.value = "";
+    filterDateTo.value = "";
+    filterEpisode.value = "";
+    filterContentType.value = "all";
+    if (searchInput.value.trim()) {
+        performSearch();
     }
 }
 
@@ -43,10 +78,31 @@ function getYoutubeUrlWithTimestamp(youtubeUrl, seconds) {
     return `${youtubeUrl}?t=${t}`;
 }
 
-function displayResults(results, query) {
+function displayResults(results, query, activeFilters = {}) {
     if (results.length === 0) {
-        resultsContainer.innerHTML = '<div class="no-results">No results found</div>';
+        const filterInfo = Object.keys(activeFilters).length > 0
+            ? " with current filters"
+            : "";
+        resultsContainer.innerHTML = `<div class="no-results">No results found${filterInfo}</div>`;
         return;
+    }
+
+    // Show active filters summary
+    let filterSummary = "";
+    if (Object.keys(activeFilters).length > 0) {
+        const filterParts = [];
+        if (activeFilters.date_from || activeFilters.date_to) {
+            const from = activeFilters.date_from || "any";
+            const to = activeFilters.date_to || "any";
+            filterParts.push(`dates: ${from} to ${to}`);
+        }
+        if (activeFilters.episode_number) {
+            filterParts.push(`episode #${activeFilters.episode_number}`);
+        }
+        if (activeFilters.content_type) {
+            filterParts.push(activeFilters.content_type === "free" ? "free episodes" : "premium episodes");
+        }
+        filterSummary = `<div class="filter-summary">Filtered by: ${filterParts.join(", ")}</div>`;
     }
 
     const html = results
@@ -93,7 +149,7 @@ function displayResults(results, query) {
         })
         .join("");
 
-    resultsContainer.innerHTML = html;
+    resultsContainer.innerHTML = filterSummary + html;
 
     // Store results for later reference
     resultsContainer.dataset.query = query;
@@ -239,3 +295,14 @@ function displayOnThisDay(data) {
 
 // Load On This Day content when page loads
 loadOnThisDay();
+
+clearFiltersBtn.addEventListener("click", clearFilters);
+
+// Re-search when filters change
+[filterDateFrom, filterDateTo, filterEpisode, filterContentType].forEach(el => {
+    el.addEventListener("change", () => {
+        if (searchInput.value.trim()) {
+            performSearch();
+        }
+    });
+});

@@ -19,6 +19,33 @@
             <button id="search-button">Search</button>
         </div>
         <div id="on-this-day" class="on-this-day"></div>
+
+        <details class="filters-panel">
+            <summary>Filters</summary>
+            <div class="filters-content">
+                <div class="filter-group">
+                    <label>Date Range</label>
+                    <div class="date-inputs">
+                        <input type="date" id="filter-date-from" placeholder="From">
+                        <span>to</span>
+                        <input type="date" id="filter-date-to" placeholder="To">
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label for="filter-episode">Episode #</label>
+                    <input type="number" id="filter-episode" placeholder="e.g., 123" min="1">
+                </div>
+                <div class="filter-group">
+                    <label for="filter-content-type">Content Type</label>
+                    <select id="filter-content-type">
+                        <option value="all">All</option>
+                        <option value="free">Free (YouTube)</option>
+                        <option value="premium">Premium (Patreon only)</option>
+                    </select>
+                </div>
+                <button id="clear-filters" class="clear-filters-btn">Clear Filters</button>
+            </div>
+        </details>
         <div id="results" class="results"></div>
     </div>
     <script src="/static/app.js"></script>
