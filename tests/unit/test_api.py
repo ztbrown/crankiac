@@ -184,6 +184,7 @@ def test_transcript_search_accepts_filter_params(client):
     with patch("app.api.transcript_routes.search_single_word", return_value=([], 0)):
         response = client.get(
             "/api/transcripts/search?q=test"
+            "&fuzzy=false"
             "&date_from=2023-01-01"
             "&date_to=2023-12-31"
             "&episode_number=123"
