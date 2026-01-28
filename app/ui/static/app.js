@@ -30,6 +30,10 @@ function formatTimestamp(seconds) {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+function getPatreonUrl(patreonId) {
+    return `https://www.patreon.com/posts/${patreonId}`;
+}
+
 function displayResults(results, query) {
     if (results.length === 0) {
         resultsContainer.innerHTML = '<div class="no-results">No results found</div>';
@@ -41,8 +45,20 @@ function displayResults(results, query) {
             (item) => `
             <div class="result-item">
                 <div class="result-header">
-                    <span class="timestamp">${formatTimestamp(item.start_time)}</span>
-                    <span class="episode-title">${escapeHtml(item.episode_title)}</span>
+                    <a href="${getPatreonUrl(item.patreon_id)}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="timestamp-link"
+                       title="Open on Patreon (skip to ${formatTimestamp(item.start_time)})">
+                        <span class="timestamp">${formatTimestamp(item.start_time)}</span>
+                        <span class="play-icon">▶</span>
+                    </a>
+                    <a href="${getPatreonUrl(item.patreon_id)}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="episode-link">
+                        ${escapeHtml(item.episode_title)}
+                    </a>
                 </div>
                 <p class="context">${highlightMatch(item.context || item.word, query)}</p>
             </div>

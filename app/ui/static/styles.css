@@ -80,6 +80,26 @@ h1 {
     margin-bottom: 8px;
 }
 
+.timestamp-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    transition: transform 0.1s;
+}
+
+.timestamp-link:hover {
+    transform: scale(1.05);
+}
+
+.timestamp-link:hover .timestamp {
+    background: #cce0ff;
+}
+
+.timestamp-link:hover .play-icon {
+    color: #0052a3;
+}
+
 .timestamp {
     font-family: "SF Mono", Monaco, monospace;
     font-size: 14px;
@@ -88,12 +108,26 @@ h1 {
     background: #e6f0ff;
     padding: 4px 8px;
     border-radius: 4px;
+    transition: background 0.2s;
 }
 
-.episode-title {
+.play-icon {
+    font-size: 12px;
+    color: #0066cc;
+    transition: color 0.2s;
+}
+
+.episode-link {
     font-size: 14px;
     color: #666;
     font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.episode-link:hover {
+    color: #0066cc;
+    text-decoration: underline;
 }
 
 .context {
