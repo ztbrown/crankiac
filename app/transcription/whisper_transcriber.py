@@ -9,6 +9,7 @@ class WordSegment:
     word: str
     start_time: Decimal
     end_time: Decimal
+    speaker: Optional[str] = None
 
 @dataclass
 class TranscriptResult:

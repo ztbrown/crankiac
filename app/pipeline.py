@@ -9,6 +9,7 @@ from app.patreon.client import PatreonClient, PatreonEpisode
 from app.patreon.downloader import AudioDownloader
 from app.transcription.whisper_transcriber import get_transcriber
 from app.transcription.storage import TranscriptStorage
+from app.transcription.diarization import get_diarizer, assign_speakers_to_words
 from app.db.repository import EpisodeRepository
 from app.db.models import Episode
 
@@ -24,7 +25,10 @@ class EpisodePipeline:
         session_id: Optional[str] = None,
         whisper_model: str = "base",
         download_dir: str = "downloads/audio",
-        cleanup_audio: bool = True
+        cleanup_audio: bool = True,
+        enable_diarization: bool = False,
+        hf_token: Optional[str] = None,
+        num_speakers: Optional[int] = None
     ):
         """
         Initialize the pipeline.
@@ -34,17 +38,30 @@ class EpisodePipeline:
             whisper_model: Whisper model size to use.
             download_dir: Directory for downloaded audio files.
             cleanup_audio: Delete audio files after successful transcription.
+            enable_diarization: Whether to run speaker diarization.
+            hf_token: HuggingFace token for pyannote (or from HF_TOKEN env).
+            num_speakers: Expected number of speakers (optional hint).
         """
         self.session_id = session_id or os.environ.get("PATREON_SESSION_ID")
         if not self.session_id:
             raise ValueError("PATREON_SESSION_ID required")
 
         self.cleanup_audio = cleanup_audio
+        self.enable_diarization = enable_diarization
         self.patreon = PatreonClient(self.session_id)
         self.downloader = AudioDownloader(self.session_id, download_dir)
         self.transcriber = get_transcriber(whisper_model)
         self.storage = TranscriptStorage()
         self.episode_repo = EpisodeRepository()
+
+        # Initialize diarizer if enabled
+        self.diarizer = None
+        if enable_diarization:
+            try:
+                self.diarizer = get_diarizer(hf_token=hf_token, num_speakers=num_speakers)
+                logger.info("Speaker diarization enabled")
+            except Exception as e:
+                logger.warning(f"Could not initialize diarizer: {e}. Diarization disabled.")
 
     def sync_episodes(self, max_episodes: int = 100) -> list[Episode]:
         """
@@ -111,6 +128,21 @@ class EpisodePipeline:
             logger.info(f"  Transcribing...")
             transcript = self.transcriber.transcribe(download_result.file_path)
             logger.info(f"  Transcribed: {len(transcript.segments)} words")
+
+            # Speaker diarization (optional)
+            if self.diarizer:
+                logger.info(f"  Running speaker diarization...")
+                try:
+                    speaker_segments = self.diarizer.diarize(download_result.file_path)
+                    transcript.segments = assign_speakers_to_words(
+                        transcript.segments, speaker_segments
+                    )
+                    speakers_found = len(set(
+                        s.speaker for s in transcript.segments if s.speaker
+                    ))
+                    logger.info(f"  Diarization complete: {speakers_found} unique speakers")
+                except Exception as e:
+                    logger.warning(f"  Diarization failed (continuing without): {e}")
 
             # Store
             logger.info(f"  Storing transcript...")
