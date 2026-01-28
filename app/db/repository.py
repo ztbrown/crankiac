@@ -10,17 +10,18 @@ class EpisodeRepository:
         with get_cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO episodes (patreon_id, title, audio_url, published_at, duration_seconds, processed)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO episodes (patreon_id, title, audio_url, published_at, duration_seconds, youtube_url, processed)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (patreon_id) DO UPDATE SET
                     title = EXCLUDED.title,
                     audio_url = EXCLUDED.audio_url,
                     published_at = EXCLUDED.published_at,
-                    duration_seconds = EXCLUDED.duration_seconds
+                    duration_seconds = EXCLUDED.duration_seconds,
+                    youtube_url = COALESCE(EXCLUDED.youtube_url, episodes.youtube_url)
                 RETURNING id, created_at, updated_at
                 """,
                 (episode.patreon_id, episode.title, episode.audio_url,
-                 episode.published_at, episode.duration_seconds, episode.processed)
+                 episode.published_at, episode.duration_seconds, episode.youtube_url, episode.processed)
             )
             row = cursor.fetchone()
             episode.id = row["id"]

@@ -11,6 +11,7 @@ class Episode:
     audio_url: Optional[str] = None
     published_at: Optional[datetime] = None
     duration_seconds: Optional[int] = None
+    youtube_url: Optional[str] = None
     processed: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
