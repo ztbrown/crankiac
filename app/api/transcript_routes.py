@@ -12,6 +12,8 @@ def search_transcripts():
         q: Search query (word or phrase)
         limit: Max results (default 100, max 500)
         offset: Pagination offset (default 0)
+        fuzzy: Enable fuzzy matching (default true)
+        threshold: Similarity threshold for fuzzy matching (default 0.3, range 0.1-0.9)
 
     Returns:
         JSON with matches including episode info and timestamps.
@@ -19,6 +21,8 @@ def search_transcripts():
     query = request.args.get("q", "").strip()
     limit = min(int(request.args.get("limit", 100)), 500)
     offset = int(request.args.get("offset", 0))
+    fuzzy = request.args.get("fuzzy", "true").lower() != "false"
+    threshold = max(0.1, min(0.9, float(request.args.get("threshold", 0.3))))
 
     if not query:
         return jsonify({"results": [], "query": "", "total": 0})
@@ -27,16 +31,24 @@ def search_transcripts():
     words = query.split()
 
     if len(words) == 1:
-        results, total = search_single_word(query, limit, offset)
+        if fuzzy:
+            results, total = search_fuzzy_word(query, limit, offset, threshold)
+        else:
+            results, total = search_single_word(query, limit, offset)
     else:
-        results, total = search_phrase(words, limit, offset)
+        if fuzzy:
+            results, total = search_fuzzy_phrase(words, limit, offset, threshold)
+        else:
+            results, total = search_phrase(words, limit, offset)
 
     return jsonify({
         "results": results,
         "query": query,
         "total": total,
         "limit": limit,
-        "offset": offset
+        "offset": offset,
+        "fuzzy": fuzzy,
+        "threshold": threshold if fuzzy else None
     })
 
 
@@ -96,6 +108,174 @@ def search_single_word(word: str, limit: int, offset: int) -> tuple[list[dict], 
                 "youtube_url": row["youtube_url"],
                 "context": row["context"]
             })
+
+        return results, total
+
+
+def search_fuzzy_word(word: str, limit: int, offset: int, threshold: float) -> tuple[list[dict], int]:
+    """Search for a single word using trigram similarity for fuzzy matching."""
+    with get_cursor(commit=False) as cursor:
+        # Set the similarity threshold for this session
+        cursor.execute("SELECT set_limit(%s)", (threshold,))
+
+        # Get total count of fuzzy matches
+        cursor.execute(
+            """
+            SELECT COUNT(*) as total
+            FROM transcript_segments ts
+            WHERE ts.word %% %s OR ts.word ILIKE %s
+            """,
+            (word, f"%{word}%")
+        )
+        total = cursor.fetchone()["total"]
+
+        # Get results with context, ordered by similarity
+        cursor.execute(
+            """
+            SELECT
+                ts.word,
+                ts.start_time,
+                ts.end_time,
+                ts.segment_index,
+                e.id as episode_id,
+                e.title as episode_title,
+                e.patreon_id,
+                e.published_at,
+                e.youtube_url,
+                similarity(ts.word, %s) as similarity_score,
+                (
+                    SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
+                    FROM transcript_segments ts2
+                    WHERE ts2.episode_id = ts.episode_id
+                    AND ts2.segment_index BETWEEN ts.segment_index - 5 AND ts.segment_index + 5
+                ) as context
+            FROM transcript_segments ts
+            JOIN episodes e ON ts.episode_id = e.id
+            WHERE ts.word %% %s OR ts.word ILIKE %s
+            ORDER BY similarity(ts.word, %s) DESC, e.published_at DESC, ts.start_time
+            LIMIT %s OFFSET %s
+            """,
+            (word, word, f"%{word}%", word, limit, offset)
+        )
+
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                "word": row["word"],
+                "start_time": float(row["start_time"]),
+                "end_time": float(row["end_time"]),
+                "segment_index": row["segment_index"],
+                "episode_id": row["episode_id"],
+                "episode_title": row["episode_title"],
+                "patreon_id": row["patreon_id"],
+                "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+                "youtube_url": row["youtube_url"],
+                "context": row["context"],
+                "similarity": round(float(row["similarity_score"]), 3)
+            })
+
+        return results, total
+
+
+def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: float) -> tuple[list[dict], int]:
+    """
+    Search for a phrase with fuzzy matching on individual words.
+    Finds sequences where each word is similar to the corresponding query word.
+    """
+    if not words:
+        return [], 0
+
+    first_word = words[0]
+    num_words = len(words)
+
+    with get_cursor(commit=False) as cursor:
+        # Set the similarity threshold
+        cursor.execute("SELECT set_limit(%s)", (threshold,))
+
+        # Build similarity conditions for each word in the phrase
+        # We check if consecutive words are similar to our query words
+        cursor.execute(
+            """
+            WITH potential_matches AS (
+                SELECT
+                    ts.episode_id,
+                    ts.segment_index as start_index,
+                    ts.start_time,
+                    similarity(ts.word, %s) as first_word_sim,
+                    e.id,
+                    e.title as episode_title,
+                    e.patreon_id,
+                    e.published_at,
+                    e.youtube_url
+                FROM transcript_segments ts
+                JOIN episodes e ON ts.episode_id = e.id
+                WHERE ts.word %% %s OR ts.word ILIKE %s
+            ),
+            verified_matches AS (
+                SELECT pm.*,
+                    (
+                        SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
+                        FROM transcript_segments ts2
+                        WHERE ts2.episode_id = pm.episode_id
+                        AND ts2.segment_index >= pm.start_index
+                        AND ts2.segment_index < pm.start_index + %s
+                    ) as matched_phrase,
+                    (
+                        SELECT ts3.end_time
+                        FROM transcript_segments ts3
+                        WHERE ts3.episode_id = pm.episode_id
+                        AND ts3.segment_index = pm.start_index + %s - 1
+                    ) as end_time,
+                    (
+                        SELECT string_agg(ts4.word, ' ' ORDER BY ts4.segment_index)
+                        FROM transcript_segments ts4
+                        WHERE ts4.episode_id = pm.episode_id
+                        AND ts4.segment_index BETWEEN pm.start_index - 3 AND pm.start_index + %s + 2
+                    ) as context,
+                    (
+                        SELECT AVG(best_sim)
+                        FROM (
+                            SELECT
+                                ts5.segment_index - pm.start_index as word_pos,
+                                GREATEST(
+                                    similarity(ts5.word, (SELECT unnest FROM unnest(%s::text[]) WITH ORDINALITY u(unnest, ord) WHERE ord = ts5.segment_index - pm.start_index + 1 LIMIT 1)),
+                                    CASE WHEN ts5.word ILIKE '%%' || (SELECT unnest FROM unnest(%s::text[]) WITH ORDINALITY u(unnest, ord) WHERE ord = ts5.segment_index - pm.start_index + 1 LIMIT 1) || '%%' THEN 1.0 ELSE 0.0 END
+                                ) as best_sim
+                            FROM transcript_segments ts5
+                            WHERE ts5.episode_id = pm.episode_id
+                            AND ts5.segment_index >= pm.start_index
+                            AND ts5.segment_index < pm.start_index + %s
+                        ) sims
+                    ) as avg_similarity
+                FROM potential_matches pm
+            )
+            SELECT * FROM verified_matches
+            WHERE avg_similarity >= %s
+            ORDER BY avg_similarity DESC, published_at DESC, start_time
+            LIMIT %s OFFSET %s
+            """,
+            (first_word, first_word, f"%{first_word}%", num_words, num_words, num_words,
+             words, words, num_words, threshold, limit, offset)
+        )
+
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                "phrase": row["matched_phrase"],
+                "start_time": float(row["start_time"]),
+                "end_time": float(row["end_time"]) if row["end_time"] else None,
+                "segment_index": row["start_index"],
+                "episode_id": row["id"],
+                "episode_title": row["episode_title"],
+                "patreon_id": row["patreon_id"],
+                "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+                "youtube_url": row["youtube_url"],
+                "context": row["context"],
+                "similarity": round(float(row["avg_similarity"]), 3) if row["avg_similarity"] else 0.0
+            })
+
+        # Get approximate total
+        total = len(results) if len(results) < limit else limit * 2
 
         return results, total
 
