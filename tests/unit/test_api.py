@@ -53,3 +53,17 @@ def test_search_response_format(client):
         assert "results" in data
         assert "query" in data
         assert isinstance(data["results"], list)
+
+@pytest.mark.unit
+def test_context_endpoint_missing_params(client):
+    """Test context endpoint requires episode_id and segment_index."""
+    response = client.get("/api/transcripts/context")
+    assert response.status_code == 400
+    assert "error" in response.json
+
+@pytest.mark.unit
+def test_context_endpoint_missing_segment_index(client):
+    """Test context endpoint requires segment_index."""
+    response = client.get("/api/transcripts/context?episode_id=1")
+    assert response.status_code == 400
+    assert "error" in response.json
