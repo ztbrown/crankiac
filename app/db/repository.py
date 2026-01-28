@@ -10,21 +10,23 @@ class EpisodeRepository:
         with get_cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO episodes (patreon_id, title, audio_url, published_at, duration_seconds, youtube_url, processed)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO episodes (patreon_id, title, audio_url, published_at, duration_seconds, youtube_url, is_free, processed)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (patreon_id) DO UPDATE SET
                     title = EXCLUDED.title,
                     audio_url = EXCLUDED.audio_url,
                     published_at = EXCLUDED.published_at,
                     duration_seconds = EXCLUDED.duration_seconds,
-                    youtube_url = COALESCE(EXCLUDED.youtube_url, episodes.youtube_url)
-                RETURNING id, created_at, updated_at
+                    youtube_url = COALESCE(EXCLUDED.youtube_url, episodes.youtube_url),
+                    is_free = EXCLUDED.is_free OR episodes.is_free
+                RETURNING id, is_free, created_at, updated_at
                 """,
                 (episode.patreon_id, episode.title, episode.audio_url,
-                 episode.published_at, episode.duration_seconds, episode.youtube_url, episode.processed)
+                 episode.published_at, episode.duration_seconds, episode.youtube_url, episode.is_free, episode.processed)
             )
             row = cursor.fetchone()
             episode.id = row["id"]
+            episode.is_free = row["is_free"]
             episode.created_at = row["created_at"]
             episode.updated_at = row["updated_at"]
             return episode
@@ -78,6 +80,30 @@ class EpisodeRepository:
                 "UPDATE episodes SET youtube_url = %s WHERE id = %s",
                 (youtube_url, episode_id)
             )
+
+    def update_is_free(self, episode_id: int, is_free: bool) -> None:
+        """Update the is_free flag for an episode."""
+        with get_cursor() as cursor:
+            cursor.execute(
+                "UPDATE episodes SET is_free = %s WHERE id = %s",
+                (is_free, episode_id)
+            )
+
+    def update_free_status(self, episode_id: int, youtube_url: Optional[str], is_free: bool) -> None:
+        """Update both youtube_url and is_free for an episode."""
+        with get_cursor() as cursor:
+            cursor.execute(
+                "UPDATE episodes SET youtube_url = %s, is_free = %s WHERE id = %s",
+                (youtube_url, is_free, episode_id)
+            )
+
+    def get_free_episodes(self) -> list[Episode]:
+        """Get all free episodes (is_free=True or has youtube_url)."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT * FROM episodes WHERE is_free = TRUE OR youtube_url IS NOT NULL ORDER BY published_at DESC"
+            )
+            return [Episode(**row) for row in cursor.fetchall()]
 
 class TranscriptRepository:
     """Data access for transcript segments."""
