@@ -24,8 +24,8 @@ def search_transcripts():
         JSON with matches including episode info and timestamps.
     """
     query = request.args.get("q", "").strip()
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    limit = max(1, min(int(request.args.get("limit", 100)), 500))
+    offset = max(0, int(request.args.get("offset", 0)))
     fuzzy = request.args.get("fuzzy", "true").lower() != "false"
     threshold = max(0.1, min(0.9, float(request.args.get("threshold", 0.3))))
 
