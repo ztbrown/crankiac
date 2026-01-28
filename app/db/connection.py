@@ -2,6 +2,11 @@ import os
 from contextlib import contextmanager
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+
+# Load environment variables from .env file before accessing them
+load_dotenv()
+
 
 def get_connection_string():
     """Get PostgreSQL connection string from environment."""
