@@ -155,6 +155,7 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "is_free": row["youtube_url"] is not None,
                 "context": row["context"]
             })
 
@@ -220,6 +221,7 @@ def search_fuzzy_word(word: str, limit: int, offset: int, threshold: float, filt
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "is_free": row["youtube_url"] is not None,
                 "context": row["context"],
                 "similarity": round(float(row["similarity_score"]), 3)
             })
@@ -324,6 +326,7 @@ def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: fl
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "is_free": row["youtube_url"] is not None,
                 "context": row["context"],
                 "similarity": round(float(row["avg_similarity"]), 3) if row["avg_similarity"] else 0.0
             })
@@ -410,6 +413,7 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "is_free": row["youtube_url"] is not None,
                 "context": row["context"]
             })
 
@@ -566,6 +570,7 @@ def on_this_day():
                 "title": row["title"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "is_free": row["youtube_url"] is not None,
                 "processed": row["processed"],
                 "word_count": row["word_count"],
                 "year": int(row["year"]) if row["year"] else None
@@ -593,6 +598,7 @@ def list_episodes():
                 e.title,
                 e.published_at,
                 e.processed,
+                e.youtube_url,
                 COUNT(ts.id) as word_count
             FROM episodes e
             LEFT JOIN transcript_segments ts ON e.id = ts.episode_id
@@ -611,6 +617,8 @@ def list_episodes():
                 "title": row["title"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "processed": row["processed"],
+                "youtube_url": row["youtube_url"],
+                "is_free": row["youtube_url"] is not None,
                 "word_count": row["word_count"]
             })
 
@@ -779,6 +787,7 @@ def search_by_speaker():
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "is_free": row["youtube_url"] is not None,
                 "context": row["context"]
             })
 
