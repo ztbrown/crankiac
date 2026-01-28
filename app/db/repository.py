@@ -1,0 +1,131 @@
+from typing import Optional
+from .connection import get_cursor
+from .models import Episode, TranscriptSegment
+
+class EpisodeRepository:
+    """Data access for episodes."""
+
+    def create(self, episode: Episode) -> Episode:
+        """Insert a new episode."""
+        with get_cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO episodes (patreon_id, title, audio_url, published_at, duration_seconds, processed)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (patreon_id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    audio_url = EXCLUDED.audio_url,
+                    published_at = EXCLUDED.published_at,
+                    duration_seconds = EXCLUDED.duration_seconds
+                RETURNING id, created_at, updated_at
+                """,
+                (episode.patreon_id, episode.title, episode.audio_url,
+                 episode.published_at, episode.duration_seconds, episode.processed)
+            )
+            row = cursor.fetchone()
+            episode.id = row["id"]
+            episode.created_at = row["created_at"]
+            episode.updated_at = row["updated_at"]
+            return episode
+
+    def get_by_patreon_id(self, patreon_id: str) -> Optional[Episode]:
+        """Get episode by Patreon ID."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT * FROM episodes WHERE patreon_id = %s",
+                (patreon_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return Episode(**row)
+            return None
+
+    def get_unprocessed(self) -> list[Episode]:
+        """Get all unprocessed episodes."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT * FROM episodes WHERE NOT processed ORDER BY published_at DESC"
+            )
+            return [Episode(**row) for row in cursor.fetchall()]
+
+    def mark_processed(self, episode_id: int) -> None:
+        """Mark an episode as processed."""
+        with get_cursor() as cursor:
+            cursor.execute(
+                "UPDATE episodes SET processed = TRUE WHERE id = %s",
+                (episode_id,)
+            )
+
+class TranscriptRepository:
+    """Data access for transcript segments."""
+
+    def bulk_insert(self, segments: list[TranscriptSegment]) -> None:
+        """Insert multiple transcript segments efficiently."""
+        if not segments:
+            return
+
+        with get_cursor() as cursor:
+            values = [
+                (s.episode_id, s.word, s.start_time, s.end_time, s.segment_index)
+                for s in segments
+            ]
+            cursor.executemany(
+                """
+                INSERT INTO transcript_segments (episode_id, word, start_time, end_time, segment_index)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                values
+            )
+
+    def search(self, query: str, limit: int = 100, offset: int = 0) -> list[dict]:
+        """
+        Search for words/phrases in transcripts.
+        Returns matches with episode info and timestamps.
+        """
+        with get_cursor(commit=False) as cursor:
+            # Use trigram similarity for fuzzy prefix matching
+            cursor.execute(
+                """
+                SELECT
+                    ts.word,
+                    ts.start_time,
+                    ts.end_time,
+                    e.id as episode_id,
+                    e.title as episode_title,
+                    e.patreon_id,
+                    e.published_at
+                FROM transcript_segments ts
+                JOIN episodes e ON ts.episode_id = e.id
+                WHERE ts.word ILIKE %s
+                ORDER BY e.published_at DESC, ts.start_time
+                LIMIT %s OFFSET %s
+                """,
+                (f"%{query}%", limit, offset)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def search_phrase(self, words: list[str], limit: int = 100) -> list[dict]:
+        """
+        Search for a phrase (consecutive words) in transcripts.
+        Returns the starting timestamp of the phrase.
+        """
+        if not words:
+            return []
+
+        with get_cursor(commit=False) as cursor:
+            # Find first word, then verify consecutive words follow
+            cursor.execute(
+                """
+                WITH first_words AS (
+                    SELECT ts.*, e.title as episode_title, e.patreon_id, e.published_at
+                    FROM transcript_segments ts
+                    JOIN episodes e ON ts.episode_id = e.id
+                    WHERE ts.word ILIKE %s
+                )
+                SELECT * FROM first_words
+                ORDER BY published_at DESC, start_time
+                LIMIT %s
+                """,
+                (f"%{words[0]}%", limit)
+            )
+            return [dict(row) for row in cursor.fetchall()]
