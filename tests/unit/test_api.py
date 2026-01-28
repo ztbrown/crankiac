@@ -131,3 +131,225 @@ def test_search_by_speaker_with_params(client):
         assert "results" in data
         assert "speaker" in data
         assert data["speaker"] == "SPEAKER_01"
+
+
+@pytest.mark.unit
+def test_search_with_date_filter(client):
+    """Test search with date_from and date_to filters."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "test",
+            "start_time": 1.5,
+            "end_time": 2.0,
+            "segment_index": 10,
+            "speaker": "SPEAKER_01",
+            "episode_id": 1,
+            "episode_title": "0001 - Test Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2023, 6, 15),
+            "youtube_url": "https://youtube.com/watch?v=123",
+            "is_free": True,
+            "context": "this is a test context"
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=test&date_from=2023-01-01&date_to=2023-12-31")
+        assert response.status_code == 200
+        data = response.json
+        assert "results" in data
+        assert "filters" in data
+        assert data["filters"]["date_from"] == "2023-01-01"
+        assert data["filters"]["date_to"] == "2023-12-31"
+
+
+@pytest.mark.unit
+def test_search_with_episode_number_filter(client):
+    """Test search with episode_number filter."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "test",
+            "start_time": 1.5,
+            "end_time": 2.0,
+            "segment_index": 10,
+            "speaker": "SPEAKER_01",
+            "episode_id": 1,
+            "episode_title": "0042 - Test Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2023, 6, 15),
+            "youtube_url": None,
+            "is_free": False,
+            "context": "this is a test context"
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=test&episode_number=42")
+        assert response.status_code == 200
+        data = response.json
+        assert "results" in data
+        assert "filters" in data
+        assert data["filters"]["episode_number"] == 42
+
+
+@pytest.mark.unit
+def test_search_with_content_type_free(client):
+    """Test search with content_type=free filter."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "test",
+            "start_time": 1.5,
+            "end_time": 2.0,
+            "segment_index": 10,
+            "speaker": "SPEAKER_01",
+            "episode_id": 1,
+            "episode_title": "0001 - Free Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2023, 6, 15),
+            "youtube_url": "https://youtube.com/watch?v=123",
+            "is_free": True,
+            "context": "this is a test context"
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=test&content_type=free")
+        assert response.status_code == 200
+        data = response.json
+        assert "results" in data
+        assert "filters" in data
+        assert data["filters"]["content_type"] == "free"
+        assert data["results"][0]["is_free"] is True
+
+
+@pytest.mark.unit
+def test_search_with_content_type_premium(client):
+    """Test search with content_type=premium filter."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "test",
+            "start_time": 1.5,
+            "end_time": 2.0,
+            "segment_index": 10,
+            "speaker": "SPEAKER_01",
+            "episode_id": 1,
+            "episode_title": "0001 - Premium Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2023, 6, 15),
+            "youtube_url": None,
+            "is_free": False,
+            "context": "this is a test context"
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=test&content_type=premium")
+        assert response.status_code == 200
+        data = response.json
+        assert "results" in data
+        assert "filters" in data
+        assert data["filters"]["content_type"] == "premium"
+        assert data["results"][0]["is_free"] is False
+
+
+@pytest.mark.unit
+def test_search_with_multiple_filters(client):
+    """Test search with multiple filters combined."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "test",
+            "start_time": 1.5,
+            "end_time": 2.0,
+            "segment_index": 10,
+            "speaker": "SPEAKER_01",
+            "episode_id": 1,
+            "episode_title": "0042 - Test Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2023, 6, 15),
+            "youtube_url": "https://youtube.com/watch?v=123",
+            "is_free": True,
+            "context": "this is a test context"
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=test&date_from=2023-01-01&date_to=2023-12-31&episode_number=42&content_type=free")
+        assert response.status_code == 200
+        data = response.json
+        assert "results" in data
+        assert "filters" in data
+        assert data["filters"]["date_from"] == "2023-01-01"
+        assert data["filters"]["date_to"] == "2023-12-31"
+        assert data["filters"]["episode_number"] == 42
+        assert data["filters"]["content_type"] == "free"
+
+
+@pytest.mark.unit
+def test_search_with_invalid_content_type_defaults_to_all(client):
+    """Test search with invalid content_type defaults to no filter."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "test",
+            "start_time": 1.5,
+            "end_time": 2.0,
+            "segment_index": 10,
+            "speaker": "SPEAKER_01",
+            "episode_id": 1,
+            "episode_title": "0001 - Test Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2023, 6, 15),
+            "youtube_url": None,
+            "is_free": False,
+            "context": "this is a test context"
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=test&content_type=invalid")
+        assert response.status_code == 200
+        data = response.json
+        assert "results" in data
+        # Invalid content_type should be excluded from filters
+        assert "content_type" not in data.get("filters", {})
