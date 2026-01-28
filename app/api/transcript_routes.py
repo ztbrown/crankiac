@@ -122,6 +122,7 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
                 ts.start_time,
                 ts.end_time,
                 ts.segment_index,
+                ts.speaker,
                 e.id as episode_id,
                 e.title as episode_title,
                 e.patreon_id,
@@ -148,6 +149,7 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
                 "start_time": float(row["start_time"]),
                 "end_time": float(row["end_time"]),
                 "segment_index": row["segment_index"],
+                "speaker": row["speaker"],
                 "episode_id": row["episode_id"],
                 "episode_title": row["episode_title"],
                 "patreon_id": row["patreon_id"],
@@ -441,7 +443,8 @@ def get_extended_context():
                 ts.word,
                 ts.segment_index,
                 ts.start_time,
-                ts.end_time
+                ts.end_time,
+                ts.speaker
             FROM transcript_segments ts
             WHERE ts.episode_id = %s
             AND ts.segment_index BETWEEN %s AND %s
@@ -460,16 +463,41 @@ def get_extended_context():
 
         # Find the center segment's position in the word list
         center_word_index = None
+        center_speaker = None
         for i, row in enumerate(segments):
             if row["segment_index"] == segment_index:
                 center_word_index = i
+                center_speaker = row["speaker"]
                 break
+
+        # Build speaker turns for the context
+        speaker_turns = []
+        current_speaker = None
+        current_words = []
+        for row in segments:
+            if row["speaker"] != current_speaker:
+                if current_words:
+                    speaker_turns.append({
+                        "speaker": current_speaker,
+                        "text": " ".join(current_words)
+                    })
+                current_speaker = row["speaker"]
+                current_words = [row["word"]]
+            else:
+                current_words.append(row["word"])
+        if current_words:
+            speaker_turns.append({
+                "speaker": current_speaker,
+                "text": " ".join(current_words)
+            })
 
         return jsonify({
             "context": context,
             "episode_id": episode_id,
             "center_segment_index": segment_index,
             "center_word_index": center_word_index,
+            "center_speaker": center_speaker,
+            "speaker_turns": speaker_turns,
             "start_time": float(segments[0]["start_time"]),
             "end_time": float(segments[-1]["end_time"]),
             "word_count": len(words)
@@ -583,3 +611,178 @@ def list_episodes():
             })
 
         return jsonify({"episodes": episodes})
+
+
+@transcript_api.route("/speakers")
+def list_speakers():
+    """
+    List all unique speakers across all episodes or for a specific episode.
+
+    Query params:
+        episode_id: Optional episode ID to filter by
+
+    Returns:
+        JSON with list of speaker names and their word counts.
+    """
+    episode_id = request.args.get("episode_id", type=int)
+
+    with get_cursor(commit=False) as cursor:
+        if episode_id:
+            cursor.execute(
+                """
+                SELECT speaker, COUNT(*) as word_count
+                FROM transcript_segments
+                WHERE episode_id = %s AND speaker IS NOT NULL
+                GROUP BY speaker
+                ORDER BY word_count DESC
+                """,
+                (episode_id,)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT speaker, COUNT(*) as word_count
+                FROM transcript_segments
+                WHERE speaker IS NOT NULL
+                GROUP BY speaker
+                ORDER BY word_count DESC
+                """
+            )
+
+        speakers = []
+        for row in cursor.fetchall():
+            speakers.append({
+                "speaker": row["speaker"],
+                "word_count": row["word_count"]
+            })
+
+        return jsonify({"speakers": speakers})
+
+
+@transcript_api.route("/search/speaker")
+def search_by_speaker():
+    """
+    Search transcripts filtered by speaker.
+
+    Query params:
+        q: Search query (word or phrase)
+        speaker: Speaker name to filter by
+        limit: Max results (default 100, max 500)
+        offset: Pagination offset (default 0)
+
+    Returns:
+        JSON with matches from the specified speaker.
+    """
+    query = request.args.get("q", "").strip()
+    speaker = request.args.get("speaker", "").strip()
+    limit = min(int(request.args.get("limit", 100)), 500)
+    offset = int(request.args.get("offset", 0))
+
+    if not speaker:
+        return jsonify({"error": "speaker parameter required"}), 400
+
+    with get_cursor(commit=False) as cursor:
+        # Build query with speaker filter
+        if query:
+            cursor.execute(
+                """
+                SELECT COUNT(*) as total
+                FROM transcript_segments ts
+                WHERE ts.word ILIKE %s AND ts.speaker = %s
+                """,
+                (f"%{query}%", speaker)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT COUNT(*) as total
+                FROM transcript_segments ts
+                WHERE ts.speaker = %s
+                """,
+                (speaker,)
+            )
+        total = cursor.fetchone()["total"]
+
+        # Get results
+        if query:
+            cursor.execute(
+                """
+                SELECT
+                    ts.word,
+                    ts.start_time,
+                    ts.end_time,
+                    ts.segment_index,
+                    ts.speaker,
+                    e.id as episode_id,
+                    e.title as episode_title,
+                    e.patreon_id,
+                    e.published_at,
+                    e.youtube_url,
+                    (
+                        SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
+                        FROM transcript_segments ts2
+                        WHERE ts2.episode_id = ts.episode_id
+                        AND ts2.segment_index BETWEEN ts.segment_index - 5 AND ts.segment_index + 5
+                    ) as context
+                FROM transcript_segments ts
+                JOIN episodes e ON ts.episode_id = e.id
+                WHERE ts.word ILIKE %s AND ts.speaker = %s
+                ORDER BY e.published_at DESC, ts.start_time
+                LIMIT %s OFFSET %s
+                """,
+                (f"%{query}%", speaker, limit, offset)
+            )
+        else:
+            # Get all words from speaker (useful for speaker analysis)
+            cursor.execute(
+                """
+                SELECT
+                    ts.word,
+                    ts.start_time,
+                    ts.end_time,
+                    ts.segment_index,
+                    ts.speaker,
+                    e.id as episode_id,
+                    e.title as episode_title,
+                    e.patreon_id,
+                    e.published_at,
+                    e.youtube_url,
+                    (
+                        SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
+                        FROM transcript_segments ts2
+                        WHERE ts2.episode_id = ts.episode_id
+                        AND ts2.segment_index BETWEEN ts.segment_index - 5 AND ts.segment_index + 5
+                    ) as context
+                FROM transcript_segments ts
+                JOIN episodes e ON ts.episode_id = e.id
+                WHERE ts.speaker = %s
+                ORDER BY e.published_at DESC, ts.start_time
+                LIMIT %s OFFSET %s
+                """,
+                (speaker, limit, offset)
+            )
+
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                "word": row["word"],
+                "start_time": float(row["start_time"]),
+                "end_time": float(row["end_time"]),
+                "segment_index": row["segment_index"],
+                "speaker": row["speaker"],
+                "episode_id": row["episode_id"],
+                "episode_title": row["episode_title"],
+                "patreon_id": row["patreon_id"],
+                "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+                "youtube_url": row["youtube_url"],
+                "context": row["context"]
+            })
+
+        return jsonify({
+            "results": results,
+            "query": query,
+            "speaker": speaker,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        })

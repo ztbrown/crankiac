@@ -24,4 +24,5 @@ class TranscriptSegment:
     start_time: Decimal
     end_time: Decimal
     segment_index: int
+    speaker: Optional[str] = None
     created_at: Optional[datetime] = None
