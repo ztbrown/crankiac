@@ -70,6 +70,48 @@ function getPatreonUrl(patreonId) {
     return `https://www.patreon.com/posts/${patreonId}`;
 }
 
+function copyToClipboard(text) {
+    return navigator.clipboard.writeText(text).catch(() => {
+        // Fallback for older browsers
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+    });
+}
+
+function showToast(message, duration = 4000) {
+    const existing = document.querySelector(".toast");
+    if (existing) existing.remove();
+
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.innerHTML = message;
+    document.body.appendChild(toast);
+
+    // Trigger animation
+    requestAnimationFrame(() => toast.classList.add("show"));
+
+    setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+async function handlePatreonClick(event, patreonId, timestamp) {
+    event.preventDefault();
+
+    await copyToClipboard(timestamp);
+    showToast(`<strong>${timestamp}</strong> copied!<br>Use the audio player's seek bar to navigate to this time.`);
+
+    // Open Patreon after a short delay so user sees the toast
+    setTimeout(() => {
+        window.open(getPatreonUrl(patreonId), "_blank", "noopener,noreferrer");
+    }, 500);
+}
+
 function getYoutubeUrlWithTimestamp(youtubeUrl, seconds) {
     const t = Math.floor(seconds);
     if (youtubeUrl.includes("?")) {
@@ -108,25 +150,38 @@ function displayResults(results, query, activeFilters = {}) {
     const html = results
         .map((item, index) => {
             const hasYoutube = !!item.youtube_url;
-            const timestampUrl = hasYoutube
-                ? getYoutubeUrlWithTimestamp(item.youtube_url, item.start_time)
-                : getPatreonUrl(item.patreon_id);
-            const linkTitle = hasYoutube
-                ? `Watch on YouTube at ${formatTimestamp(item.start_time)}`
-                : `Open on Patreon (skip to ${formatTimestamp(item.start_time)})`;
-            const iconClass = hasYoutube ? "youtube" : "";
+            const timestamp = formatTimestamp(item.start_time);
+            const iconClass = hasYoutube ? "youtube" : "patreon";
+
+            let timestampLink;
+            if (hasYoutube) {
+                const timestampUrl = getYoutubeUrlWithTimestamp(item.youtube_url, item.start_time);
+                timestampLink = `
+                    <a href="${timestampUrl}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="timestamp-link youtube"
+                       title="Watch on YouTube at ${timestamp}">
+                        <span class="timestamp">${timestamp}</span>
+                        <span class="play-icon">&#9654;</span>
+                    </a>`;
+            } else {
+                timestampLink = `
+                    <a href="${getPatreonUrl(item.patreon_id)}"
+                       class="timestamp-link patreon"
+                       title="Copy timestamp and open on Patreon"
+                       data-patreon-id="${item.patreon_id}"
+                       data-timestamp="${timestamp}">
+                        <span class="timestamp">${timestamp}</span>
+                        <span class="play-icon">▶</span>
+                        <span class="copy-hint">📋</span>
+                    </a>`;
+            }
 
             return `
             <div class="result-item" data-result-index="${index}">
                 <div class="result-header">
-                    <a href="${timestampUrl}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="timestamp-link ${iconClass}"
-                       title="${linkTitle}">
-                        <span class="timestamp">${formatTimestamp(item.start_time)}</span>
-                        <span class="play-icon">${hasYoutube ? "&#9654;" : "▶"}</span>
-                    </a>
+                    ${timestampLink}
                     <a href="${hasYoutube ? item.youtube_url : getPatreonUrl(item.patreon_id)}"
                        target="_blank"
                        rel="noopener noreferrer"
@@ -158,6 +213,13 @@ function displayResults(results, query, activeFilters = {}) {
     // Add click handlers to expand buttons
     document.querySelectorAll(".expand-btn").forEach(btn => {
         btn.addEventListener("click", handleExpandClick);
+    });
+
+    // Add click handlers to Patreon timestamp links
+    document.querySelectorAll(".timestamp-link.patreon").forEach(link => {
+        link.addEventListener("click", (e) => {
+            handlePatreonClick(e, link.dataset.patreonId, link.dataset.timestamp);
+        });
     });
 }
 

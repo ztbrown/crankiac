@@ -247,6 +247,69 @@ h1 {
     color: #900;
 }
 
+/* Patreon timestamp link styles */
+.timestamp-link.patreon {
+    cursor: pointer;
+}
+
+.timestamp-link.patreon .timestamp {
+    color: #f96854;
+    background: #fff0ed;
+}
+
+.timestamp-link.patreon:hover .timestamp {
+    background: #ffe0da;
+}
+
+.timestamp-link.patreon .play-icon {
+    color: #f96854;
+}
+
+.timestamp-link.patreon:hover .play-icon {
+    color: #e8533f;
+}
+
+.copy-hint {
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    margin-left: 2px;
+}
+
+.timestamp-link.patreon:hover .copy-hint {
+    opacity: 1;
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #333;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 90%;
+}
+
+.toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.toast strong {
+    color: #f96854;
+    font-family: "SF Mono", Monaco, monospace;
+}
+
 .yt-badge {
     font-size: 11px;
     font-weight: 700;
@@ -405,6 +468,7 @@ h1 {
     .error {
         padding: 16px 12px;
     }
+}
 
 /* On This Day styles */
 .on-this-day {
