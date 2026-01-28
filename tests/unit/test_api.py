@@ -19,6 +19,14 @@ def test_health_endpoint(client):
     assert response.json == {"status": "ok"}
 
 @pytest.mark.unit
+def test_version_endpoint(client):
+    """Test version endpoint returns current version."""
+    from app import __version__
+    response = client.get("/api/version")
+    assert response.status_code == 200
+    assert response.json == {"version": __version__}
+
+@pytest.mark.unit
 def test_search_empty_query(client):
     """Test search with empty query returns empty results."""
     response = client.get("/api/search?q=")
