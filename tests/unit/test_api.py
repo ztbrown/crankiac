@@ -203,7 +203,7 @@ def test_transcript_search_accepts_filter_params(client):
 def test_transcript_search_filters_omitted_when_empty(client):
     """Test transcript search omits filters that are not provided."""
     with patch("app.api.transcript_routes.search_single_word", return_value=([], 0)):
-        response = client.get("/api/transcripts/search?q=test&content_type=all")
+        response = client.get("/api/transcripts/search?q=test&fuzzy=false&content_type=all")
         assert response.status_code == 200
         data = response.json
         # Filters should be empty when content_type is 'all' (default)
@@ -214,7 +214,7 @@ def test_transcript_search_filters_omitted_when_empty(client):
 def test_transcript_search_content_type_premium(client):
     """Test transcript search accepts premium content type filter."""
     with patch("app.api.transcript_routes.search_single_word", return_value=([], 0)):
-        response = client.get("/api/transcripts/search?q=test&content_type=premium")
+        response = client.get("/api/transcripts/search?q=test&fuzzy=false&content_type=premium")
         assert response.status_code == 200
         assert response.json["filters"]["content_type"] == "premium"
 def test_speakers_endpoint(client):
