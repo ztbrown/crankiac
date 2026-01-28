@@ -28,6 +28,9 @@ htmlcov/
 # OS
 .DS_Store
 
+# Environment (contains secrets)
+.env
+
 # Gas Town (added by gt)
 .runtime/
 .claude/
