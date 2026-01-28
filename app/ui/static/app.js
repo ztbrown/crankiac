@@ -187,6 +187,73 @@ function toggleYoutubeEmbed(event) {
     btn.title = "Close video";
 }
 
+function toggleAudioPlayer(event) {
+    const btn = event.currentTarget;
+    const resultItem = btn.closest(".result-item");
+    const contextContainer = resultItem.querySelector(".context-container");
+    const playerContainer = resultItem.querySelector(".audio-player-container");
+
+    if (playerContainer) {
+        // Close player
+        const audio = playerContainer.querySelector("audio");
+        if (audio) {
+            audio.pause();
+        }
+        playerContainer.remove();
+        btn.classList.remove("active");
+        btn.title = "Play audio";
+        return;
+    }
+
+    // Create audio player
+    const patreonId = btn.dataset.patreonId;
+    const startTime = parseFloat(btn.dataset.startTime);
+    const streamUrl = `/api/audio/stream/${patreonId}`;
+
+    const container = document.createElement("div");
+    container.className = "audio-player-container";
+    container.innerHTML = `
+        <div class="audio-player-wrapper">
+            <audio controls preload="metadata">
+                <source src="${streamUrl}" type="audio/mpeg">
+                Your browser does not support the audio element.
+            </audio>
+            <div class="audio-seek-info">
+                Seeking to ${formatTimestamp(startTime)}...
+            </div>
+        </div>
+    `;
+
+    contextContainer.insertAdjacentElement("afterend", container);
+
+    const audio = container.querySelector("audio");
+    const seekInfo = container.querySelector(".audio-seek-info");
+
+    // When metadata is loaded, seek to the start time
+    audio.addEventListener("loadedmetadata", () => {
+        audio.currentTime = startTime;
+        seekInfo.textContent = `Playing from ${formatTimestamp(startTime)}`;
+        audio.play().catch(e => {
+            // Autoplay might be blocked
+            seekInfo.textContent = `Ready at ${formatTimestamp(startTime)} - click play`;
+        });
+    });
+
+    // Update seek info while playing
+    audio.addEventListener("timeupdate", () => {
+        seekInfo.textContent = `${formatTimestamp(audio.currentTime)} / ${formatTimestamp(audio.duration || 0)}`;
+    });
+
+    // Handle errors
+    audio.addEventListener("error", () => {
+        seekInfo.textContent = "Audio not available";
+        seekInfo.classList.add("error");
+    });
+
+    btn.classList.add("active");
+    btn.title = "Close audio";
+}
+
 function getMatchTypeBadge(item) {
     // If no similarity field, it's an exact match (non-fuzzy search)
     if (item.similarity === undefined) {
@@ -262,7 +329,13 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
                         <span class="timestamp">${timestamp}</span>
                         <span class="play-icon">▶</span>
                         <span class="copy-hint">📋</span>
-                    </a>`;
+                    </a>
+                    <button class="audio-btn"
+                            data-patreon-id="${item.patreon_id}"
+                            data-start-time="${item.start_time}"
+                            title="Play audio">
+                        <span class="audio-icon">🔊</span>
+                    </button>`;
             }
 
             return `
@@ -313,6 +386,11 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
     // Add click handlers to YouTube embed buttons
     document.querySelectorAll(".embed-btn").forEach(btn => {
         btn.addEventListener("click", toggleYoutubeEmbed);
+    });
+
+    // Add click handlers to audio play buttons
+    document.querySelectorAll(".audio-btn").forEach(btn => {
+        btn.addEventListener("click", toggleAudioPlayer);
     });
 }
 
