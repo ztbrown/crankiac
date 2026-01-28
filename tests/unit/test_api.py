@@ -334,3 +334,66 @@ def test_search_by_speaker_with_params(client):
         assert "results" in data
         assert "speaker" in data
         assert data["speaker"] == "SPEAKER_01"
+
+
+@pytest.mark.unit
+def test_transcript_search_invalid_limit_non_numeric(client):
+    """Test transcript search returns 400 for non-numeric limit."""
+    response = client.get("/api/transcripts/search?q=test&limit=abc")
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "limit" in response.json["error"]
+    assert "integer" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_transcript_search_invalid_limit_negative(client):
+    """Test transcript search returns 400 for negative limit."""
+    response = client.get("/api/transcripts/search?q=test&limit=-1")
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "limit" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_transcript_search_invalid_offset_non_numeric(client):
+    """Test transcript search returns 400 for non-numeric offset."""
+    response = client.get("/api/transcripts/search?q=test&offset=xyz")
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "offset" in response.json["error"]
+    assert "integer" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_transcript_search_invalid_offset_negative(client):
+    """Test transcript search returns 400 for negative offset."""
+    response = client.get("/api/transcripts/search?q=test&offset=-1")
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "offset" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_list_episodes_invalid_limit(client):
+    """Test list_episodes returns 400 for non-numeric limit."""
+    response = client.get("/api/transcripts/episodes?limit=abc")
+    assert response.status_code == 400
+    assert "error" in response.json
+
+
+@pytest.mark.unit
+def test_list_episodes_invalid_offset(client):
+    """Test list_episodes returns 400 for negative offset."""
+    response = client.get("/api/transcripts/episodes?offset=-5")
+    assert response.status_code == 400
+    assert "error" in response.json
+
+
+@pytest.mark.unit
+def test_context_endpoint_invalid_radius(client):
+    """Test context endpoint returns 400 for non-numeric radius."""
+    response = client.get("/api/transcripts/context?episode_id=1&segment_index=10&radius=abc")
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "radius" in response.json["error"]
