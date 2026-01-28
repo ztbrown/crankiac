@@ -1,7 +1,35 @@
+from typing import Optional, Tuple
+
 from flask import Blueprint, jsonify, request
 from app.db.connection import get_cursor
 
 transcript_api = Blueprint("transcript_api", __name__, url_prefix="/api/transcripts")
+
+
+def parse_limit(value: Optional[str], default: int = 100, max_val: int = 500) -> Tuple[Optional[int], Optional[str]]:
+    """Parse and validate limit parameter. Returns (value, error_message)."""
+    if value is None:
+        return default, None
+    try:
+        limit = int(value)
+    except ValueError:
+        return None, f"limit must be an integer, got: {value}"
+    if limit < 1:
+        return None, "limit must be at least 1"
+    return min(limit, max_val), None
+
+
+def parse_offset(value: Optional[str], default: int = 0) -> Tuple[Optional[int], Optional[str]]:
+    """Parse and validate offset parameter. Returns (value, error_message)."""
+    if value is None:
+        return default, None
+    try:
+        offset = int(value)
+    except ValueError:
+        return None, f"offset must be an integer, got: {value}"
+    if offset < 0:
+        return None, "offset must be non-negative"
+    return offset, None
 
 @transcript_api.route("/search")
 def search_transcripts():
@@ -24,8 +52,15 @@ def search_transcripts():
         JSON with matches including episode info and timestamps.
     """
     query = request.args.get("q", "").strip()
-    limit = max(1, min(int(request.args.get("limit", 100)), 500))
-    offset = max(0, int(request.args.get("offset", 0)))
+
+    limit, limit_err = parse_limit(request.args.get("limit"))
+    if limit_err:
+        return jsonify({"error": limit_err}), 400
+
+    offset, offset_err = parse_offset(request.args.get("offset"))
+    if offset_err:
+        return jsonify({"error": offset_err}), 400
+
     fuzzy = request.args.get("fuzzy", "true").lower() != "false"
     threshold = max(0.1, min(0.9, float(request.args.get("threshold", 0.3))))
 
@@ -439,7 +474,18 @@ def get_extended_context():
     """
     episode_id = request.args.get("episode_id", type=int)
     segment_index = request.args.get("segment_index", type=int)
-    radius = min(int(request.args.get("radius", 50)), 200)
+
+    radius_str = request.args.get("radius")
+    if radius_str is not None:
+        try:
+            radius = int(radius_str)
+        except ValueError:
+            return jsonify({"error": f"radius must be an integer, got: {radius_str}"}), 400
+        if radius < 1:
+            return jsonify({"error": "radius must be at least 1"}), 400
+        radius = min(radius, 200)
+    else:
+        radius = 50
 
     if not episode_id or segment_index is None:
         return jsonify({"error": "episode_id and segment_index required"}), 400
@@ -531,7 +577,10 @@ def on_this_day():
     today = date.today()
     month = request.args.get("month", type=int, default=today.month)
     day = request.args.get("day", type=int, default=today.day)
-    limit = min(int(request.args.get("limit", 50)), 200)
+
+    limit, limit_err = parse_limit(request.args.get("limit"), default=50, max_val=200)
+    if limit_err:
+        return jsonify({"error": limit_err}), 400
 
     # Validate month and day
     if not (1 <= month <= 12):
@@ -587,8 +636,13 @@ def on_this_day():
 @transcript_api.route("/episodes")
 def list_episodes():
     """List all episodes with transcript status."""
-    limit = min(int(request.args.get("limit", 50)), 200)
-    offset = int(request.args.get("offset", 0))
+    limit, limit_err = parse_limit(request.args.get("limit"), default=50, max_val=200)
+    if limit_err:
+        return jsonify({"error": limit_err}), 400
+
+    offset, offset_err = parse_offset(request.args.get("offset"))
+    if offset_err:
+        return jsonify({"error": offset_err}), 400
 
     with get_cursor(commit=False) as cursor:
         cursor.execute(
@@ -688,8 +742,14 @@ def search_by_speaker():
     """
     query = request.args.get("q", "").strip()
     speaker = request.args.get("speaker", "").strip()
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+
+    limit, limit_err = parse_limit(request.args.get("limit"))
+    if limit_err:
+        return jsonify({"error": limit_err}), 400
+
+    offset, offset_err = parse_offset(request.args.get("offset"))
+    if offset_err:
+        return jsonify({"error": offset_err}), 400
 
     if not speaker:
         return jsonify({"error": "speaker parameter required"}), 400
