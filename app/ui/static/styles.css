@@ -575,3 +575,12 @@ h1 {
     color: #0066cc;
     text-decoration: underline;
 }
+
+/* Footer with version info */
+.app-footer {
+    text-align: center;
+    padding: 24px;
+    margin-top: 40px;
+    color: #999;
+    font-size: 12px;
+}
