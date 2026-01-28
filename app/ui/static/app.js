@@ -34,6 +34,14 @@ function getPatreonUrl(patreonId) {
     return `https://www.patreon.com/posts/${patreonId}`;
 }
 
+function getYoutubeUrlWithTimestamp(youtubeUrl, seconds) {
+    const t = Math.floor(seconds);
+    if (youtubeUrl.includes("?")) {
+        return `${youtubeUrl}&t=${t}`;
+    }
+    return `${youtubeUrl}?t=${t}`;
+}
+
 function displayResults(results, query) {
     if (results.length === 0) {
         resultsContainer.innerHTML = '<div class="no-results">No results found</div>';
@@ -41,24 +49,34 @@ function displayResults(results, query) {
     }
 
     const html = results
-        .map(
-            (item, index) => `
+        .map((item, index) => {
+            const hasYoutube = !!item.youtube_url;
+            const timestampUrl = hasYoutube
+                ? getYoutubeUrlWithTimestamp(item.youtube_url, item.start_time)
+                : getPatreonUrl(item.patreon_id);
+            const linkTitle = hasYoutube
+                ? `Watch on YouTube at ${formatTimestamp(item.start_time)}`
+                : `Open on Patreon (skip to ${formatTimestamp(item.start_time)})`;
+            const iconClass = hasYoutube ? "youtube" : "";
+
+            return `
             <div class="result-item" data-result-index="${index}">
                 <div class="result-header">
-                    <a href="${getPatreonUrl(item.patreon_id)}"
+                    <a href="${timestampUrl}"
                        target="_blank"
                        rel="noopener noreferrer"
-                       class="timestamp-link"
-                       title="Open on Patreon (skip to ${formatTimestamp(item.start_time)})">
+                       class="timestamp-link ${iconClass}"
+                       title="${linkTitle}">
                         <span class="timestamp">${formatTimestamp(item.start_time)}</span>
-                        <span class="play-icon">▶</span>
+                        <span class="play-icon">${hasYoutube ? "&#9654;" : "▶"}</span>
                     </a>
-                    <a href="${getPatreonUrl(item.patreon_id)}"
+                    <a href="${hasYoutube ? item.youtube_url : getPatreonUrl(item.patreon_id)}"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="episode-link">
                         ${escapeHtml(item.episode_title)}
                     </a>
+                    ${hasYoutube ? '<span class="yt-badge">YT</span>' : ""}
                     <button class="expand-btn"
                             data-episode-id="${item.episode_id}"
                             data-segment-index="${item.segment_index}"
@@ -67,11 +85,11 @@ function displayResults(results, query) {
                     </button>
                 </div>
                 <div class="context-container">
-                    <p class="context">${highlightMatch(item.context || item.word, query)}</p>
+                    <p class="context">${highlightMatch(item.context || item.word || item.phrase, query)}</p>
                 </div>
             </div>
-        `
-        )
+        `;
+        })
         .join("");
 
     resultsContainer.innerHTML = html;

@@ -66,6 +66,7 @@ def search_single_word(word: str, limit: int, offset: int) -> tuple[list[dict], 
                 e.title as episode_title,
                 e.patreon_id,
                 e.published_at,
+                e.youtube_url,
                 (
                     SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
                     FROM transcript_segments ts2
@@ -92,6 +93,7 @@ def search_single_word(word: str, limit: int, offset: int) -> tuple[list[dict], 
                 "episode_title": row["episode_title"],
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+                "youtube_url": row["youtube_url"],
                 "context": row["context"]
             })
 
@@ -121,7 +123,8 @@ def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict]
                     e.id,
                     e.title as episode_title,
                     e.patreon_id,
-                    e.published_at
+                    e.published_at,
+                    e.youtube_url
                 FROM transcript_segments ts
                 JOIN episodes e ON ts.episode_id = e.id
                 WHERE ts.word ILIKE %s
@@ -168,6 +171,7 @@ def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict]
                 "episode_title": row["episode_title"],
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+                "youtube_url": row["youtube_url"],
                 "context": row["context"]
             })
 
