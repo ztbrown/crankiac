@@ -120,6 +120,69 @@ function getYoutubeUrlWithTimestamp(youtubeUrl, seconds) {
     return `${youtubeUrl}?t=${t}`;
 }
 
+function extractYoutubeVideoId(url) {
+    // Handle various YouTube URL formats:
+    // - https://www.youtube.com/watch?v=VIDEO_ID
+    // - https://youtu.be/VIDEO_ID
+    // - https://www.youtube.com/embed/VIDEO_ID
+    const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    ];
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) {
+            return match[1];
+        }
+    }
+    return null;
+}
+
+function getYoutubeEmbedUrl(videoId, startSeconds) {
+    const start = Math.floor(startSeconds);
+    return `https://www.youtube.com/embed/${videoId}?start=${start}&autoplay=1`;
+}
+
+function toggleYoutubeEmbed(event) {
+    const btn = event.currentTarget;
+    const resultItem = btn.closest(".result-item");
+    const contextContainer = resultItem.querySelector(".context-container");
+    const embedContainer = resultItem.querySelector(".youtube-embed-container");
+
+    if (embedContainer) {
+        // Close embed
+        embedContainer.remove();
+        btn.classList.remove("active");
+        btn.title = "Watch inline";
+        return;
+    }
+
+    // Create embed
+    const youtubeUrl = btn.dataset.youtubeUrl;
+    const startTime = parseFloat(btn.dataset.startTime);
+    const videoId = extractYoutubeVideoId(youtubeUrl);
+
+    if (!videoId) {
+        console.error("Could not extract video ID from URL:", youtubeUrl);
+        return;
+    }
+
+    const embedUrl = getYoutubeEmbedUrl(videoId, startTime);
+    const container = document.createElement("div");
+    container.className = "youtube-embed-container";
+    container.innerHTML = `
+        <iframe
+            src="${embedUrl}"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen>
+        </iframe>
+    `;
+
+    contextContainer.insertAdjacentElement("afterend", container);
+    btn.classList.add("active");
+    btn.title = "Close video";
+}
+
 function displayResults(results, query, activeFilters = {}) {
     if (results.length === 0) {
         const filterInfo = Object.keys(activeFilters).length > 0
@@ -164,7 +227,13 @@ function displayResults(results, query, activeFilters = {}) {
                        title="Watch on YouTube at ${timestamp}">
                         <span class="timestamp">${timestamp}</span>
                         <span class="play-icon">&#9654;</span>
-                    </a>`;
+                    </a>
+                    <button class="embed-btn"
+                            data-youtube-url="${escapeHtml(item.youtube_url)}"
+                            data-start-time="${item.start_time}"
+                            title="Watch inline">
+                        <span class="embed-icon">&#9632;</span>
+                    </button>`;
             } else {
                 timestampLink = `
                     <a href="${getPatreonUrl(item.patreon_id)}"
@@ -220,6 +289,11 @@ function displayResults(results, query, activeFilters = {}) {
         link.addEventListener("click", (e) => {
             handlePatreonClick(e, link.dataset.patreonId, link.dataset.timestamp);
         });
+    });
+
+    // Add click handlers to YouTube embed buttons
+    document.querySelectorAll(".embed-btn").forEach(btn => {
+        btn.addEventListener("click", toggleYoutubeEmbed);
     });
 }
 
