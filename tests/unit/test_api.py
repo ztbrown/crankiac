@@ -123,15 +123,12 @@ def test_on_this_day_endpoint_invalid_day(client):
     assert "day" in response.json["error"]
 
 
->>>>>>> 5f157c0 (feat: Add search filters for date range, episode number, and content type (cr-k4a8))
 def test_transcript_search_empty_query(client):
     """Test transcript search with empty query returns empty results."""
     response = client.get("/api/transcripts/search?q=")
     assert response.status_code == 200
     assert response.json["results"] == []
-<<<<<<< HEAD
     assert response.json["query"] == ""
-=======
     assert response.json["total"] == 0
 
 
