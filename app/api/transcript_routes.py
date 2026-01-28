@@ -410,6 +410,66 @@ def list_speakers():
         return jsonify({"speakers": speakers})
 
 
+@transcript_api.route("/on-this-day")
+def on_this_day():
+    """
+    Get episodes from the same month/day in previous years.
+
+    Query params:
+        month: Month (1-12), defaults to current month
+        day: Day (1-31), defaults to current day
+        limit: Max results (default 10)
+
+    Returns:
+        JSON with episodes from this day in history.
+    """
+    from datetime import date
+
+    today = date.today()
+    month = request.args.get("month", type=int) or today.month
+    day = request.args.get("day", type=int) or today.day
+    limit = min(int(request.args.get("limit", 10)), 50)
+
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT
+                e.id,
+                e.patreon_id,
+                e.title,
+                e.published_at,
+                e.youtube_url,
+                e.is_free,
+                EXTRACT(YEAR FROM e.published_at) as year
+            FROM episodes e
+            WHERE EXTRACT(MONTH FROM e.published_at) = %s
+            AND EXTRACT(DAY FROM e.published_at) = %s
+            ORDER BY e.published_at DESC
+            LIMIT %s
+            """,
+            (month, day, limit)
+        )
+
+        episodes = []
+        for row in cursor.fetchall():
+            episodes.append({
+                "id": row["id"],
+                "patreon_id": row["patreon_id"],
+                "title": row["title"],
+                "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+                "youtube_url": row["youtube_url"],
+                "is_free": row["is_free"],
+                "year": int(row["year"]) if row["year"] else None
+            })
+
+        return jsonify({
+            "episodes": episodes,
+            "month": month,
+            "day": day,
+            "count": len(episodes)
+        })
+
+
 @transcript_api.route("/search/speaker")
 def search_by_speaker():
     """
