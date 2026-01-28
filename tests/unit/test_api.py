@@ -67,3 +67,57 @@ def test_context_endpoint_missing_segment_index(client):
     response = client.get("/api/transcripts/context?episode_id=1")
     assert response.status_code == 400
     assert "error" in response.json
+
+
+@pytest.mark.unit
+def test_on_this_day_endpoint_default_date(client):
+    """Test on-this-day endpoint uses current date by default."""
+    from datetime import date
+    today = date.today()
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_ctx.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchall.return_value = []
+        mock_cursor.return_value = mock_ctx
+
+        response = client.get("/api/transcripts/on-this-day")
+        assert response.status_code == 200
+        data = response.json
+        assert data["date"]["month"] == today.month
+        assert data["date"]["day"] == today.day
+        assert "episodes" in data
+
+
+@pytest.mark.unit
+def test_on_this_day_endpoint_custom_date(client):
+    """Test on-this-day endpoint accepts custom month/day."""
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_ctx.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchall.return_value = []
+        mock_cursor.return_value = mock_ctx
+
+        response = client.get("/api/transcripts/on-this-day?month=7&day=4")
+        assert response.status_code == 200
+        data = response.json
+        assert data["date"]["month"] == 7
+        assert data["date"]["day"] == 4
+
+
+@pytest.mark.unit
+def test_on_this_day_endpoint_invalid_month(client):
+    """Test on-this-day endpoint rejects invalid month."""
+    response = client.get("/api/transcripts/on-this-day?month=13")
+    assert response.status_code == 400
+    assert "month" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_on_this_day_endpoint_invalid_day(client):
+    """Test on-this-day endpoint rejects invalid day."""
+    response = client.get("/api/transcripts/on-this-day?day=32")
+    assert response.status_code == 400
+    assert "day" in response.json["error"]
