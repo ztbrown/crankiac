@@ -4,8 +4,8 @@ import pytest
 import sys
 from pathlib import Path
 
-# Add refinery to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "refinery"))
+# Add scripts to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
 from bump_version import (
     parse_version,
