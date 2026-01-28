@@ -7,6 +7,7 @@ const filterDateFrom = document.getElementById("filter-date-from");
 const filterDateTo = document.getElementById("filter-date-to");
 const filterEpisode = document.getElementById("filter-episode");
 const filterContentType = document.getElementById("filter-content-type");
+const filterFuzzy = document.getElementById("filter-fuzzy");
 const clearFiltersBtn = document.getElementById("clear-filters");
 
 function getFilters() {
@@ -24,6 +25,8 @@ function buildSearchUrl(query) {
     for (const [key, value] of Object.entries(filters)) {
         params.append(key, value);
     }
+    // Add fuzzy parameter based on checkbox state
+    params.append("fuzzy", filterFuzzy.checked ? "true" : "false");
     return `/api/transcripts/search?${params.toString()}`;
 }
 
@@ -44,7 +47,7 @@ async function performSearch() {
         }
 
         const data = await response.json();
-        displayResults(data.results, data.query, data.filters);
+        displayResults(data.results, data.query, data.filters, data.fuzzy);
     } catch (error) {
         resultsContainer.innerHTML = `<div class="error">Error: ${error.message}</div>`;
     }
@@ -55,6 +58,7 @@ function clearFilters() {
     filterDateTo.value = "";
     filterEpisode.value = "";
     filterContentType.value = "all";
+    filterFuzzy.checked = true;
     if (searchInput.value.trim()) {
         performSearch();
     }
@@ -183,7 +187,20 @@ function toggleYoutubeEmbed(event) {
     btn.title = "Close video";
 }
 
-function displayResults(results, query, activeFilters = {}) {
+function getMatchTypeBadge(item) {
+    // If no similarity field, it's an exact match (non-fuzzy search)
+    if (item.similarity === undefined) {
+        return '<span class="match-badge exact">exact</span>';
+    }
+    // Similarity of 1.0 means exact match
+    if (item.similarity >= 0.99) {
+        return '<span class="match-badge exact">exact</span>';
+    }
+    // Lower similarity means fuzzy match (trigram-based)
+    return `<span class="match-badge fuzzy">fuzzy ${Math.round(item.similarity * 100)}%</span>`;
+}
+
+function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true) {
     if (results.length === 0) {
         const filterInfo = Object.keys(activeFilters).length > 0
             ? " with current filters"
@@ -215,6 +232,7 @@ function displayResults(results, query, activeFilters = {}) {
             const hasYoutube = !!item.youtube_url;
             const timestamp = formatTimestamp(item.start_time);
             const iconClass = hasYoutube ? "youtube" : "patreon";
+            const matchBadge = fuzzyEnabled ? getMatchTypeBadge(item) : "";
 
             let timestampLink;
             if (hasYoutube) {
@@ -251,6 +269,7 @@ function displayResults(results, query, activeFilters = {}) {
             <div class="result-item" data-result-index="${index}">
                 <div class="result-header">
                     ${timestampLink}
+                    ${matchBadge}
                     <a href="${hasYoutube ? item.youtube_url : getPatreonUrl(item.patreon_id)}"
                        target="_blank"
                        rel="noopener noreferrer"
@@ -435,7 +454,7 @@ loadOnThisDay();
 clearFiltersBtn.addEventListener("click", clearFilters);
 
 // Re-search when filters change
-[filterDateFrom, filterDateTo, filterEpisode, filterContentType].forEach(el => {
+[filterDateFrom, filterDateTo, filterEpisode, filterContentType, filterFuzzy].forEach(el => {
     el.addEventListener("change", () => {
         if (searchInput.value.trim()) {
             performSearch();
