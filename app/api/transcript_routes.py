@@ -52,16 +52,12 @@ def search_transcripts():
         if fuzzy:
             results, total = search_fuzzy_word(query, limit, offset, threshold)
         else:
-            results, total = search_single_word(query, limit, offset)
+            results, total = search_single_word(query, limit, offset, filters)
     else:
         if fuzzy:
             results, total = search_fuzzy_phrase(words, limit, offset, threshold)
         else:
-            results, total = search_phrase(words, limit, offset)
-
-        results, total = search_single_word(query, limit, offset, filters)
-    else:
-        results, total = search_phrase(words, limit, offset, filters)
+            results, total = search_phrase(words, limit, offset, filters)
 
     return jsonify({
         "results": results,
@@ -70,8 +66,7 @@ def search_transcripts():
         "limit": limit,
         "offset": offset,
         "fuzzy": fuzzy,
-        "threshold": threshold if fuzzy else None
-
+        "threshold": threshold if fuzzy else None,
         "filters": {k: v for k, v in filters.items() if v is not None}
     })
 
@@ -331,8 +326,6 @@ def search_fuzzy_phrase(words: list[str], limit: int, offset: int, threshold: fl
 
         return results, total
 
-
-def search_phrase(words: list[str], limit: int, offset: int) -> tuple[list[dict], int]:
 
 def search_phrase(words: list[str], limit: int, offset: int, filters: dict = None) -> tuple[list[dict], int]:
     """
