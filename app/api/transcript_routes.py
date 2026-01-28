@@ -85,10 +85,11 @@ def build_filter_clauses(filters: dict) -> tuple[str, list]:
         params.append(filters["date_to"] + " 23:59:59")
 
     if filters.get("episode_number"):
-        # Match episode number in title patterns like "Episode 123", "123 -", "#123"
+        # Match episode number in title patterns like "Episode 123", "1003 - Title", "123:", "#123"
         clauses.append("(e.title ~* %s)")
         ep_num = filters["episode_number"]
-        params.append(f"(Episode\\s+{ep_num}\\b|\\b{ep_num}\\s*[-–:]|#{ep_num}\\b)")
+        # ^{ep_num}\s+- matches titles starting with "NNNN - " (space-dash format)
+        params.append(f"(Episode\\s+{ep_num}\\b|^{ep_num}\\s+-|\\b{ep_num}\\s*[-–:]|#{ep_num}\\b)")
 
     if filters.get("content_type") == "free":
         clauses.append("e.youtube_url IS NOT NULL")
