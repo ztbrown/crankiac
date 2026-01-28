@@ -1,6 +1,7 @@
 const searchInput = document.getElementById("search-input");
 const searchButton = document.getElementById("search-button");
 const resultsContainer = document.getElementById("results");
+const onThisDayContainer = document.getElementById("on-this-day");
 
 async function performSearch() {
     const query = searchInput.value.trim();
@@ -175,3 +176,66 @@ searchInput.addEventListener("keypress", (e) => {
         performSearch();
     }
 });
+
+async function loadOnThisDay() {
+    try {
+        const response = await fetch("/api/transcripts/on-this-day");
+
+        if (!response.ok) {
+            throw new Error("Failed to fetch On This Day");
+        }
+
+        const data = await response.json();
+        displayOnThisDay(data);
+    } catch (error) {
+        console.error("Error loading On This Day:", error);
+    }
+}
+
+function displayOnThisDay(data) {
+    if (!data.episodes || data.episodes.length === 0) {
+        onThisDayContainer.innerHTML = "";
+        return;
+    }
+
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+
+    const dateStr = `${monthNames[data.date.month - 1]} ${data.date.day}`;
+
+    const episodesHtml = data.episodes
+        .map((ep, index) => {
+            const yearsAgo = data.years_ago[index];
+            const yearLabel = yearsAgo === 1 ? "1 year ago" : `${yearsAgo} years ago`;
+            const linkUrl = ep.youtube_url || getPatreonUrl(ep.patreon_id);
+            const hasYoutube = !!ep.youtube_url;
+
+            return `
+                <div class="otd-episode">
+                    <span class="otd-years-ago">${yearLabel}</span>
+                    <a href="${linkUrl}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="otd-episode-link">
+                        ${escapeHtml(ep.title)}
+                    </a>
+                    ${hasYoutube ? '<span class="yt-badge">YT</span>' : ""}
+                </div>
+            `;
+        })
+        .join("");
+
+    onThisDayContainer.innerHTML = `
+        <div class="otd-header">
+            <h2>On This Day (${dateStr})</h2>
+        </div>
+        <div class="otd-episodes">
+            ${episodesHtml}
+        </div>
+    `;
+}
+
+// Load On This Day content when page loads
+loadOnThisDay();
