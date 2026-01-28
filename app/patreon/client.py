@@ -4,7 +4,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 PATREON_API_BASE = "https://www.patreon.com/api"
-CHAPO_CREATOR_ID = "430829"  # Chapo Trap House creator ID
+CHAPO_CREATOR_ID = "372319"  # Chapo Trap House campaign ID
 
 @dataclass
 class PatreonEpisode:
@@ -75,8 +75,10 @@ class PatreonClient:
         # Extract audio data from included resources
         audio_map = {}
         for included in data.get("included", []):
-            if included.get("type") == "media" and included.get("attributes", {}).get("mimetype", "").startswith("audio/"):
-                audio_map[included["id"]] = included.get("attributes", {}).get("download_url")
+            if included.get("type") == "media":
+                mimetype = included.get("attributes", {}).get("mimetype") or ""
+                if mimetype.startswith("audio/"):
+                    audio_map[included["id"]] = included.get("attributes", {}).get("download_url")
 
         for post in data.get("data", []):
             attrs = post.get("attributes", {})
