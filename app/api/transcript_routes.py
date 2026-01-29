@@ -386,6 +386,7 @@ def get_extended_context():
             })
 
         # Get episode's youtube_url and compute embed URL with offset
+        youtube_url = None
         youtube_embed_url = None
         cursor.execute(
             "SELECT youtube_url FROM episodes WHERE id = %s",
@@ -429,6 +430,7 @@ def get_extended_context():
             "start_time": float(segments[0]["start_time"]),
             "end_time": float(segments[-1]["end_time"]),
             "word_count": len(words),
+            "youtube_url": youtube_url,
             "youtube_embed_url": youtube_embed_url,
         })
 
