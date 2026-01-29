@@ -74,10 +74,10 @@ class EpisodeRepository:
             return [Episode(**row) for row in cursor.fetchall()]
 
     def update_youtube_url(self, episode_id: int, youtube_url: str) -> None:
-        """Update the YouTube URL for an episode."""
+        """Update the YouTube URL for an episode and mark as free."""
         with get_cursor() as cursor:
             cursor.execute(
-                "UPDATE episodes SET youtube_url = %s WHERE id = %s",
+                "UPDATE episodes SET youtube_url = %s, is_free = TRUE WHERE id = %s",
                 (youtube_url, episode_id)
             )
 
@@ -104,6 +104,17 @@ class EpisodeRepository:
                 "SELECT * FROM episodes WHERE is_free = TRUE OR youtube_url IS NOT NULL ORDER BY published_at DESC"
             )
             return [Episode(**row) for row in cursor.fetchall()]
+
+    def backfill_is_free_from_youtube_url(self) -> int:
+        """Set is_free=TRUE for all episodes that have a youtube_url.
+
+        Returns the number of rows updated.
+        """
+        with get_cursor() as cursor:
+            cursor.execute(
+                "UPDATE episodes SET is_free = TRUE WHERE youtube_url IS NOT NULL AND is_free = FALSE"
+            )
+            return cursor.rowcount
 
 class TranscriptRepository:
     """Data access for transcript segments."""
