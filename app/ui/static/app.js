@@ -158,22 +158,16 @@ function toggleYoutubeEmbed(event) {
         return;
     }
 
-    // Create embed
-    const youtubeUrl = btn.dataset.youtubeUrl;
-    const startTime = parseFloat(btn.dataset.startTime);
-    const videoId = extractYoutubeVideoId(youtubeUrl);
+    // Create embed using pre-computed URL from API (includes ?start= and autoplay)
+    const embedUrl = btn.dataset.embedUrl;
+    // Add autoplay parameter if not present
+    const embedUrlWithAutoplay = embedUrl.includes("autoplay=") ? embedUrl : `${embedUrl}&autoplay=1`;
 
-    if (!videoId) {
-        console.error("Could not extract video ID from URL:", youtubeUrl);
-        return;
-    }
-
-    const embedUrl = getYoutubeEmbedUrl(videoId, startTime);
     const container = document.createElement("div");
     container.className = "youtube-embed-container";
     container.innerHTML = `
         <iframe
-            src="${embedUrl}"
+            src="${embedUrlWithAutoplay}"
             frameborder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowfullscreen>
@@ -302,6 +296,8 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
             let timestampLink;
             if (hasYoutube) {
                 const timestampUrl = getYoutubeUrlWithTimestamp(item.youtube_url, item.start_time);
+                // Use youtube_embed_url from API if available, otherwise fallback to constructing it
+                const embedUrl = item.youtube_embed_url || getYoutubeEmbedUrl(extractYoutubeVideoId(item.youtube_url), item.start_time);
                 timestampLink = `
                     <a href="${timestampUrl}"
                        target="_blank"
@@ -312,8 +308,7 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
                         <span class="play-icon">&#9654;</span>
                     </a>
                     <button class="embed-btn"
-                            data-youtube-url="${escapeHtml(item.youtube_url)}"
-                            data-start-time="${item.start_time}"
+                            data-embed-url="${escapeHtml(embedUrl)}"
                             title="Watch inline">
                         <span class="embed-icon">&#9632;</span>
                     </button>`;
