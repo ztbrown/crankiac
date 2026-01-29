@@ -9,9 +9,11 @@ from unittest.mock import Mock, patch
 from app.youtube.client import (
     YouTubeClient,
     YouTubeVideo,
+    MatchResult,
     normalize_title,
     extract_episode_number,
     match_episode_to_video,
+    match_episode_to_video_detailed,
     is_free_monday_episode,
     save_videos_to_json,
     load_videos_from_json,
@@ -244,6 +246,111 @@ class TestIsFreeMondayEpisode:
             duration_seconds=4500,
         )
         assert is_free_monday_episode(video) is False
+
+
+class TestMatchEpisodeToVideoDetailed:
+    """Tests for detailed matching with ambiguity detection."""
+
+    def setup_method(self):
+        self.videos = [
+            YouTubeVideo(
+                video_id="abc123",
+                title="Episode 500: The Big One",
+                published_at=datetime(2024, 1, 15, 12, 0, 0),
+                url="https://www.youtube.com/watch?v=abc123",
+            ),
+            YouTubeVideo(
+                video_id="def456",
+                title="Episode 501: Another Day",
+                published_at=datetime(2024, 1, 22, 12, 0, 0),
+                url="https://www.youtube.com/watch?v=def456",
+            ),
+            YouTubeVideo(
+                video_id="ghi789",
+                title="The Big Day Special",
+                published_at=datetime(2024, 1, 15, 12, 0, 0),
+                url="https://www.youtube.com/watch?v=ghi789",
+            ),
+        ]
+
+    def test_returns_match_result_type(self):
+        result = match_episode_to_video_detailed(
+            "Episode 500: The Big One",
+            datetime(2024, 1, 15),
+            self.videos,
+        )
+        assert isinstance(result, MatchResult)
+
+    def test_match_result_has_score(self):
+        result = match_episode_to_video_detailed(
+            "Episode 500: The Big One",
+            datetime(2024, 1, 15),
+            self.videos,
+        )
+        assert result.score > 0
+        assert result.video is not None
+        assert result.video.video_id == "abc123"
+
+    def test_match_result_has_reasons(self):
+        result = match_episode_to_video_detailed(
+            "Episode 500: The Big One",
+            datetime(2024, 1, 15),
+            self.videos,
+        )
+        assert len(result.match_reasons) > 0
+        assert any("episode_number=500" in r for r in result.match_reasons)
+
+    def test_detects_ambiguous_match(self):
+        # Create videos with similar scores
+        similar_videos = [
+            YouTubeVideo(
+                video_id="vid1",
+                title="Big Day Special Event",
+                published_at=datetime(2024, 1, 15, 12, 0, 0),
+                url="https://www.youtube.com/watch?v=vid1",
+            ),
+            YouTubeVideo(
+                video_id="vid2",
+                title="Big Day Party Event",
+                published_at=datetime(2024, 1, 15, 12, 0, 0),
+                url="https://www.youtube.com/watch?v=vid2",
+            ),
+        ]
+        result = match_episode_to_video_detailed(
+            "Big Day Event",
+            datetime(2024, 1, 15),
+            similar_videos,
+        )
+        # Both videos should score similarly (big, day, event overlap)
+        assert result.is_ambiguous is True
+        assert result.runner_up is not None
+
+    def test_not_ambiguous_with_clear_winner(self):
+        result = match_episode_to_video_detailed(
+            "Episode 500: The Big One",
+            datetime(2024, 1, 15),
+            self.videos,
+        )
+        # Episode number match gives +50, should be clear winner
+        assert result.is_ambiguous is False
+
+    def test_no_match_returns_empty_result(self):
+        result = match_episode_to_video_detailed(
+            "Completely Unrelated Title",
+            datetime(2020, 1, 1),
+            self.videos,
+        )
+        assert result.video is None
+        assert result.score < 30
+
+    def test_tracks_runner_up(self):
+        result = match_episode_to_video_detailed(
+            "Episode 500: The Big One",
+            datetime(2024, 1, 15),
+            self.videos,
+        )
+        # Should have a runner up tracked
+        assert result.runner_up is not None or result.runner_up_score == 0
 
 
 class TestSaveLoadVideos:
