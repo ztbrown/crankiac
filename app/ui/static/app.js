@@ -146,18 +146,6 @@ function getYoutubeEmbedUrl(videoId, startSeconds) {
     return `https://www.youtube.com/embed/${videoId}?start=${start}&autoplay=1`;
 }
 
-function getMatchTypeBadge(item) {
-    // If no similarity field, it's an exact match (non-fuzzy search)
-    if (item.similarity === undefined) {
-        return '<span class="match-badge exact">exact</span>';
-    }
-    // Similarity of 1.0 means exact match
-    if (item.similarity >= 0.99) {
-        return '<span class="match-badge exact">exact</span>';
-    }
-    // Lower similarity means fuzzy match (trigram-based)
-    return `<span class="match-badge fuzzy">fuzzy ${Math.round(item.similarity * 100)}%</span>`;
-}
 
 function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true) {
     if (results.length === 0) {
@@ -190,8 +178,6 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
         .map((item, index) => {
             const hasYoutube = !!item.youtube_url;
             const timestamp = formatTimestamp(item.start_time);
-            const iconClass = hasYoutube ? "youtube" : "patreon";
-            const matchBadge = fuzzyEnabled ? getMatchTypeBadge(item) : "";
 
             let timestampLink;
             if (hasYoutube) {
@@ -225,14 +211,12 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
             <div class="result-item" data-result-index="${index}">
                 <div class="result-header">
                     ${timestampLink}
-                    ${matchBadge}
                     <a href="${hasYoutube ? item.youtube_url : getPatreonUrl(item.patreon_id)}"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="episode-link">
                         ${escapeHtml(item.episode_title)}
                     </a>
-                    ${hasYoutube ? '<span class="yt-badge">YT</span>' : ""}
                     <button class="expand-btn"
                             data-episode-id="${item.episode_id}"
                             data-segment-index="${item.segment_index}"
@@ -447,7 +431,6 @@ function displayOnThisDay(data) {
                        class="otd-episode-link">
                         ${escapeHtml(ep.title)}
                     </a>
-                    ${hasYoutube ? '<span class="yt-badge">YT</span>' : ""}
                 </div>
             `;
         })
