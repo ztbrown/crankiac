@@ -338,11 +338,16 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
                     </button>`;
             }
 
+            const speakerSpan = item.speaker
+                ? `<span class="speaker">${escapeHtml(item.speaker)}</span>`
+                : "";
+
             return `
             <div class="result-item" data-result-index="${index}">
                 <div class="result-header">
                     ${timestampLink}
                     ${matchBadge}
+                    ${speakerSpan}
                     <a href="${hasYoutube ? item.youtube_url : getPatreonUrl(item.patreon_id)}"
                        target="_blank"
                        rel="noopener noreferrer"
