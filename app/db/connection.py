@@ -11,11 +11,20 @@ _project_root = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_project_root / ".env")
 
 def get_connection_string():
-    """Get PostgreSQL connection string from environment."""
-    return os.environ.get(
+    """Get PostgreSQL connection string from environment.
+
+    Railway provides DATABASE_URL in postgres:// format, but SQLAlchemy
+    and psycopg2 require postgresql://. This function automatically
+    converts postgres:// to postgresql:// if needed.
+    """
+    url = os.environ.get(
         "DATABASE_URL",
         "postgresql://localhost:5432/crankiac"
     )
+    # Railway uses postgres:// but SQLAlchemy requires postgresql://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
 
 @contextmanager
 def get_connection():
