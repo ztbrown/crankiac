@@ -250,6 +250,85 @@ def backfill_is_free(args):
         print(f"Updated {updated} episodes: set is_free=TRUE where youtube_url was set")
 
 
+def youtube_align(args):
+    """Align Patreon transcripts with YouTube captions to compute timestamp offsets."""
+    from app.db.connection import get_cursor
+    from app.youtube.alignment import align_episode, store_anchor_points
+
+    # Get episodes with youtube_url and transcripts
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT e.id, e.title, e.youtube_url
+            FROM episodes e
+            JOIN transcript_segments ts ON e.id = ts.episode_id
+            WHERE e.youtube_url IS NOT NULL
+            ORDER BY e.published_at DESC
+            LIMIT %s
+            """,
+            (args.limit,)
+        )
+        episodes = cursor.fetchall()
+
+    print(f"Found {len(episodes)} episodes with YouTube URLs and transcripts")
+
+    if not episodes:
+        print("No episodes to align.")
+        return
+
+    aligned = 0
+    failed = 0
+    skipped = 0
+
+    for ep in episodes:
+        episode_id = ep["id"]
+        title = ep["title"]
+        youtube_url = ep["youtube_url"]
+
+        # Check if already aligned (unless --force)
+        if not args.force:
+            with get_cursor(commit=False) as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) as count FROM timestamp_anchors WHERE episode_id = %s",
+                    (episode_id,)
+                )
+                existing = cursor.fetchone()["count"]
+                if existing > 0:
+                    if args.verbose:
+                        print(f"  [SKIP] {title[:50]}... (already has {existing} anchors)")
+                    skipped += 1
+                    continue
+
+        print(f"  Aligning: {title[:50]}...")
+
+        result = align_episode(episode_id, youtube_url)
+
+        if result.success:
+            if args.dry_run:
+                print(f"    [DRY RUN] Would store {len(result.anchor_points)} anchors, offset={result.offset_seconds:.2f}s")
+            else:
+                stored = store_anchor_points(episode_id, result)
+                print(f"    Stored {stored} anchors, offset={result.offset_seconds:.2f}s")
+            aligned += 1
+
+            if args.verbose and result.anchor_points:
+                print(f"    Sample matches:")
+                for anchor in result.anchor_points[:3]:
+                    print(f"      Patreon {float(anchor.patreon_time):.1f}s -> YouTube {float(anchor.youtube_time):.1f}s")
+                    print(f"        \"{anchor.matched_text}\"")
+        else:
+            print(f"    [FAILED] {result.error_message}")
+            failed += 1
+
+    print(f"\n=== Alignment Results ===")
+    print(f"  Episodes processed: {len(episodes)}")
+    print(f"  Aligned: {aligned}")
+    print(f"  Skipped (already aligned): {skipped}")
+    print(f"  Failed: {failed}")
+    if args.dry_run:
+        print("  (Dry run - no changes made)")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Crankiac management CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -293,6 +372,13 @@ def main():
     is_free_parser = subparsers.add_parser("backfill-is-free", help="Set is_free=TRUE for episodes that have youtube_url")
     is_free_parser.add_argument("--dry-run", action="store_true", help="Show count without updating database")
 
+    # youtube-align command
+    align_parser = subparsers.add_parser("youtube-align", help="Align Patreon transcripts with YouTube captions")
+    align_parser.add_argument("--limit", type=int, default=50, help="Max episodes to align (default: 50)")
+    align_parser.add_argument("--dry-run", action="store_true", help="Show alignment results without storing")
+    align_parser.add_argument("--force", action="store_true", help="Re-align episodes that already have anchors")
+    align_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed alignment info")
+
     args = parser.parse_args()
 
     if args.command == "migrate":
@@ -307,6 +393,8 @@ def main():
         youtube_backfill(args)
     elif args.command == "backfill-is-free":
         backfill_is_free(args)
+    elif args.command == "youtube-align":
+        youtube_align(args)
     else:
         parser.print_help()
         sys.exit(1)
