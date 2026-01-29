@@ -1,0 +1,48 @@
+# Git
+.git
+.gitattributes
+.github/
+
+# Environment and secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+conftest.py
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Development runtime (Gas Town)
+.runtime/
+.claude/
+.beads/
+.logs/
+
+# Project-specific
+downloads/
+state.json
+docs/
+scripts/
+AGENTS.md
+CHANGELOG.md
+VERSIONING.md
