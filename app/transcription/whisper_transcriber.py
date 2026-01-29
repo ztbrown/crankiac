@@ -18,6 +18,12 @@ class TranscriptResult:
     language: str
     duration: float
 
+# Default prompt to improve transcription accuracy for Chapo Trap House podcast
+DEFAULT_INITIAL_PROMPT = (
+    "Chapo Trap House podcast with hosts Matt Christman, Will Menaker, "
+    "Felix Biederman, Amber A'Lee Frost, and Virgil Texas."
+)
+
 class WhisperTranscriber:
     """Transcribes audio files using OpenAI Whisper with word-level timestamps."""
 
@@ -39,12 +45,21 @@ class WhisperTranscriber:
             self._model = whisper.load_model(self.model_name)
         return self._model
 
-    def transcribe(self, audio_path: str) -> TranscriptResult:
+    def transcribe(
+        self,
+        audio_path: str,
+        initial_prompt: Optional[str] = None,
+        language: str = "en"
+    ) -> TranscriptResult:
         """
         Transcribe an audio file with word-level timestamps.
 
         Args:
             audio_path: Path to the audio file.
+            initial_prompt: Optional prompt to guide transcription style and vocabulary.
+                           Defaults to DEFAULT_INITIAL_PROMPT with podcast-specific terms.
+            language: Language code for transcription. Defaults to 'en' to skip
+                     auto-detection and improve accuracy for English content.
 
         Returns:
             TranscriptResult with word segments and metadata.
@@ -52,11 +67,16 @@ class WhisperTranscriber:
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
+        # Use default prompt if none provided
+        prompt = initial_prompt if initial_prompt is not None else DEFAULT_INITIAL_PROMPT
+
         # Transcribe with word timestamps
         result = self.model.transcribe(
             audio_path,
             word_timestamps=True,
-            verbose=False
+            verbose=False,
+            initial_prompt=prompt,
+            language=language
         )
 
         segments = []
@@ -88,7 +108,9 @@ class WhisperTranscriber:
     def transcribe_with_chunks(
         self,
         audio_path: str,
-        chunk_callback: Optional[callable] = None
+        chunk_callback: Optional[callable] = None,
+        initial_prompt: Optional[str] = None,
+        language: str = "en"
     ) -> TranscriptResult:
         """
         Transcribe a long audio file, optionally reporting progress.
@@ -96,13 +118,15 @@ class WhisperTranscriber:
         Args:
             audio_path: Path to the audio file.
             chunk_callback: Optional callback(segments_so_far, progress_pct) called periodically.
+            initial_prompt: Optional prompt to guide transcription style and vocabulary.
+            language: Language code for transcription. Defaults to 'en'.
 
         Returns:
             TranscriptResult with all word segments.
         """
         # For now, use standard transcribe - Whisper handles long files internally
         # Could add chunking logic here for very long files if needed
-        return self.transcribe(audio_path)
+        return self.transcribe(audio_path, initial_prompt=initial_prompt, language=language)
 
 
 def get_transcriber(model_name: Optional[str] = None) -> WhisperTranscriber:
