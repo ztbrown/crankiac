@@ -259,10 +259,10 @@ def youtube_align(args):
     with get_cursor(commit=False) as cursor:
         cursor.execute(
             """
-            SELECT DISTINCT e.id, e.title, e.youtube_url
+            SELECT e.id, e.title, e.youtube_url, e.published_at
             FROM episodes e
-            JOIN transcript_segments ts ON e.id = ts.episode_id
             WHERE e.youtube_url IS NOT NULL
+            AND EXISTS (SELECT 1 FROM transcript_segments ts WHERE ts.episode_id = e.id)
             ORDER BY e.published_at DESC
             LIMIT %s
             """,
