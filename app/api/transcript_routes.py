@@ -328,8 +328,11 @@ def get_extended_context():
 @transcript_api.route("/episodes")
 def list_episodes():
     """List all episodes with transcript status."""
-    limit = min(int(request.args.get("limit", 50)), 200)
-    offset = int(request.args.get("offset", 0))
+    try:
+        limit = min(int(request.args.get("limit", 50)), 200)
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        return jsonify({"error": "limit and offset must be integers"}), 400
 
     with get_cursor(commit=False) as cursor:
         cursor.execute(

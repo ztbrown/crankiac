@@ -370,3 +370,19 @@ def test_search_with_invalid_content_type_defaults_to_all(client):
         assert "results" in data
         # Invalid content_type should be excluded from filters
         assert "content_type" not in data.get("filters", {})
+
+
+@pytest.mark.unit
+def test_list_episodes_invalid_limit_returns_400(client):
+    """Test that invalid limit parameter returns 400 instead of raising ValueError."""
+    response = client.get("/api/transcripts/episodes?limit=abc")
+    assert response.status_code == 400
+    assert response.json == {"error": "limit and offset must be integers"}
+
+
+@pytest.mark.unit
+def test_list_episodes_invalid_offset_returns_400(client):
+    """Test that invalid offset parameter returns 400 instead of raising ValueError."""
+    response = client.get("/api/transcripts/episodes?offset=xyz")
+    assert response.status_code == 400
+    assert response.json == {"error": "limit and offset must be integers"}
