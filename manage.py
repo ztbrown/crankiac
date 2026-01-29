@@ -147,6 +147,89 @@ def youtube_sync(args):
                 print(f"  Match 2 (score={res.runner_up_score}): {res.runner_up.title}")
                 print(f"    URL: {res.runner_up.url}")
 
+def youtube_backfill(args):
+    """Backfill youtube_url for episodes that don't have one."""
+    import os
+    from app.db.repository import EpisodeRepository
+    from app.youtube.client import (
+        match_episode_to_video_detailed,
+        load_videos_from_json,
+    )
+
+    # Load videos from JSON file
+    json_path = args.json or "app/data/youtube_videos.json"
+
+    if not os.path.exists(json_path):
+        print(f"Error: YouTube videos JSON not found at {json_path}")
+        print("Run 'python manage.py youtube-fetch' first to fetch video data.")
+        return
+
+    print(f"Loading YouTube videos from {json_path}...")
+    videos = load_videos_from_json(json_path)
+    print(f"  Loaded {len(videos)} videos")
+
+    repo = EpisodeRepository()
+    episodes = repo.get_without_youtube()
+    print(f"Found {len(episodes)} episodes without youtube_url")
+
+    if not episodes:
+        print("Nothing to backfill.")
+        return
+
+    matched = 0
+    unmatched = 0
+    ambiguous = 0
+    unmatched_episodes = []
+
+    print(f"\nMatching episodes...")
+    for episode in episodes:
+        result = match_episode_to_video_detailed(
+            episode.title,
+            episode.published_at,
+            videos,
+            date_tolerance_days=args.tolerance,
+        )
+
+        if result.video:
+            if result.is_ambiguous:
+                ambiguous += 1
+                status = "[AMBIGUOUS] "
+            else:
+                status = ""
+
+            if args.dry_run:
+                print(f"  {status}[DRY RUN] Would update: {episode.title[:50]}...")
+                print(f"    -> {result.video.url}")
+            else:
+                repo.update_youtube_url(episode.id, result.video.url)
+                print(f"  {status}Updated: {episode.title[:50]}...")
+                print(f"    -> {result.video.url}")
+            matched += 1
+        else:
+            unmatched += 1
+            unmatched_episodes.append(episode)
+            if args.verbose:
+                print(f"  [NO MATCH] {episode.title[:60]}...")
+                print(f"    Published: {episode.published_at}, Best score: {result.score}")
+
+    print(f"\n=== Backfill Results ===")
+    print(f"  Episodes checked: {len(episodes)}")
+    print(f"  Matched: {matched}")
+    print(f"  Ambiguous (matched but needs review): {ambiguous}")
+    print(f"  Unmatched: {unmatched}")
+    if args.dry_run:
+        print("  (Dry run - no changes made)")
+
+    # Log unmatched episodes
+    if unmatched_episodes:
+        print(f"\n=== Unmatched Episodes ({len(unmatched_episodes)}) ===")
+        for ep in unmatched_episodes[:20]:  # Limit output
+            print(f"  - {ep.title[:60]}...")
+            print(f"    Published: {ep.published_at}")
+        if len(unmatched_episodes) > 20:
+            print(f"  ... and {len(unmatched_episodes) - 20} more")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Crankiac management CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -179,6 +262,13 @@ def main():
     yt_parser.add_argument("--fetch", action="store_true", help="Fetch fresh videos instead of using JSON file")
     yt_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed ambiguous match info for manual review")
 
+    # youtube-backfill command
+    backfill_parser = subparsers.add_parser("youtube-backfill", help="Backfill youtube_url for episodes (does NOT update is_free)")
+    backfill_parser.add_argument("--dry-run", action="store_true", help="Show matches without updating database")
+    backfill_parser.add_argument("--tolerance", type=int, default=7, help="Date tolerance in days for matching (default: 7)")
+    backfill_parser.add_argument("--json", help="Path to YouTube videos JSON file (default: app/data/youtube_videos.json)")
+    backfill_parser.add_argument("--verbose", "-v", action="store_true", help="Show unmatched episodes details")
+
     args = parser.parse_args()
 
     if args.command == "migrate":
@@ -189,6 +279,8 @@ def main():
         youtube_fetch(args)
     elif args.command == "youtube-sync":
         youtube_sync(args)
+    elif args.command == "youtube-backfill":
+        youtube_backfill(args)
     else:
         parser.print_help()
         sys.exit(1)
