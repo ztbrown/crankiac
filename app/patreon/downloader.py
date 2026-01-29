@@ -86,8 +86,6 @@ class AudioDownloader:
                         error=str(e)
                     )
 
-        return DownloadResult(success=False, file_path=None, error="Max retries exceeded")
-
     def _download_with_resume(
         self,
         url: str,
