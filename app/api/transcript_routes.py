@@ -174,11 +174,24 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
         """
         cursor.execute(results_query, [f"%{word}%"] + filter_params + [limit, offset])
 
+        # Import alignment function for YouTube time conversion
+        from ..youtube.alignment import get_youtube_time
+
+        # Start YouTube video a few seconds early to provide context
+        YOUTUBE_LEAD_TIME = 2  # seconds
+
         results = []
         for row in cursor.fetchall():
+            start_time = float(row["start_time"])
+            youtube_start_time = None
+            if row["youtube_url"]:
+                yt_time = get_youtube_time(row["episode_id"], start_time)
+                if yt_time is not None:
+                    youtube_start_time = max(0, yt_time - YOUTUBE_LEAD_TIME)
+
             results.append({
                 "word": row["word"],
-                "start_time": float(row["start_time"]),
+                "start_time": start_time,
                 "end_time": float(row["end_time"]),
                 "segment_index": row["segment_index"],
                 "speaker": row["speaker"],
@@ -187,6 +200,7 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "youtube_start_time": youtube_start_time,
                 "is_free": row["is_free"],
                 "context": row["context"]
             })
@@ -286,11 +300,24 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
         params = [f"%{first_word}%"] + filter_params + [num_words, num_words, num_words, f"%{' '.join(words)}%", limit, offset]
         cursor.execute(query, params)
 
+        # Import alignment function for YouTube time conversion
+        from ..youtube.alignment import get_youtube_time
+
+        # Start YouTube video a few seconds early to provide context
+        YOUTUBE_LEAD_TIME = 2  # seconds
+
         results = []
         for row in cursor.fetchall():
+            start_time = float(row["start_time"])
+            youtube_start_time = None
+            if row["youtube_url"]:
+                yt_time = get_youtube_time(row["id"], start_time)
+                if yt_time is not None:
+                    youtube_start_time = max(0, yt_time - YOUTUBE_LEAD_TIME)
+
             results.append({
                 "phrase": row["matched_phrase"],
-                "start_time": float(row["start_time"]),
+                "start_time": start_time,
                 "end_time": float(row["end_time"]) if row["end_time"] else None,
                 "segment_index": row["start_index"],
                 "episode_id": row["id"],
@@ -298,6 +325,7 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "youtube_start_time": youtube_start_time,
                 "is_free": row["is_free"],
                 "context": row["context"]
             })
@@ -406,17 +434,22 @@ def get_extended_context():
                     break
 
             if center_start_time is not None:
+                # Start YouTube video a few seconds early to provide context
+                YOUTUBE_LEAD_TIME = 2  # seconds
+
                 # Try to get aligned YouTube time
                 youtube_time = get_youtube_time(episode_id, center_start_time)
                 if youtube_time is not None:
                     try:
-                        youtube_embed_url = format_youtube_url(youtube_url, youtube_time, "embed")
+                        adjusted_time = max(0, youtube_time - YOUTUBE_LEAD_TIME)
+                        youtube_embed_url = format_youtube_url(youtube_url, adjusted_time, "embed")
                     except ValueError:
                         pass
                 else:
                     # Fall back to using Patreon time directly (no offset)
                     try:
-                        youtube_embed_url = format_youtube_url(youtube_url, center_start_time, "embed")
+                        adjusted_time = max(0, center_start_time - YOUTUBE_LEAD_TIME)
+                        youtube_embed_url = format_youtube_url(youtube_url, adjusted_time, "embed")
                     except ValueError:
                         pass
 

@@ -195,14 +195,17 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
 
             let timestampLink;
             if (hasYoutube) {
-                const timestampUrl = getYoutubeUrlWithTimestamp(item.youtube_url, item.start_time);
+                // Use aligned youtube_start_time if available, otherwise fall back to start_time
+                const youtubeTime = item.youtube_start_time ?? item.start_time;
+                const timestampUrl = getYoutubeUrlWithTimestamp(item.youtube_url, youtubeTime);
+                const youtubeTimestamp = formatTimestamp(youtubeTime);
                 timestampLink = `
                     <a href="${timestampUrl}"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="timestamp-link youtube"
-                       title="Watch on YouTube at ${timestamp}">
-                        <span class="timestamp">${timestamp}</span>
+                       title="Watch on YouTube at ${youtubeTimestamp}">
+                        <span class="timestamp">${youtubeTimestamp}</span>
                         <span class="play-icon">&#9654;</span>
                     </a>`;
             } else {
@@ -312,8 +315,20 @@ async function handleExpandClick(event) {
             expandedHtml += `<p class="context expanded-context">${highlightMatch(data.context, query)}</p>`;
         }
 
-        // Add YouTube embed below the context if this is a free episode
-        if (originalItem.youtube_url) {
+        // Add YouTube embed below the context (uses aligned timestamp from server)
+        if (data.youtube_embed_url) {
+            expandedHtml += `
+                <div class="expanded-youtube-embed">
+                    <iframe
+                        src="${data.youtube_embed_url}"
+                        frameborder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowfullscreen>
+                    </iframe>
+                </div>
+            `;
+        } else if (originalItem.youtube_url) {
+            // Fallback to Patreon timestamp if no aligned URL available
             const videoId = extractYoutubeVideoId(originalItem.youtube_url);
             if (videoId) {
                 const embedUrl = getYoutubeEmbedUrl(videoId, originalItem.start_time);

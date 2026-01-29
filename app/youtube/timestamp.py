@@ -141,6 +141,6 @@ def format_youtube_url(
         return f"https://www.youtube.com/watch?v={video_id}&t={timestamp}"
     elif format_type == "embed":
         timestamp = format_timestamp_embed(start_time)
-        return f"https://www.youtube.com/embed/{video_id}?start={timestamp}"
+        return f"https://www.youtube.com/embed/{video_id}?start={timestamp}&autoplay=1"
     else:
         raise ValueError(f"Unknown format_type: {format_type}. Use 'link' or 'embed'.")

@@ -1,11 +1,12 @@
 """YouTube/Patreon audio alignment utilities."""
 import re
-import requests
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
 from statistics import median
+
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 
 from ..db.connection import get_cursor
 from .timestamp import extract_video_id
@@ -40,7 +41,7 @@ class CaptionSegment:
 def fetch_youtube_captions(video_id: str) -> list[CaptionSegment]:
     """Fetch auto-generated captions from YouTube.
 
-    Uses YouTube's timedtext API to get auto-generated captions.
+    Uses youtube-transcript-api to get auto-generated captions.
 
     Args:
         video_id: YouTube video ID.
@@ -48,68 +49,33 @@ def fetch_youtube_captions(video_id: str) -> list[CaptionSegment]:
     Returns:
         List of CaptionSegment objects with text and timing.
     """
-    # First, get the video page to find the captions URL
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    })
-
-    # Get video page
-    video_url = f"https://www.youtube.com/watch?v={video_id}"
-    response = session.get(video_url)
-    response.raise_for_status()
-
-    # Find the captions track URL in the page
-    # Look for "captionTracks" in the ytInitialPlayerResponse
-    match = re.search(r'"captionTracks":\s*(\[.*?\])', response.text)
-    if not match:
-        return []
-
-    import json
     try:
-        caption_tracks = json.loads(match.group(1))
-    except json.JSONDecodeError:
-        return []
+        api = YouTubeTranscriptApi()
+        transcript = api.fetch(video_id)
 
-    # Find English auto-generated captions
-    caption_url = None
-    for track in caption_tracks:
-        # Prefer auto-generated English captions
-        if track.get("vssId", "").startswith("a.en"):
-            caption_url = track.get("baseUrl")
-            break
-        # Fall back to any English
-        if track.get("languageCode") == "en":
-            caption_url = track.get("baseUrl")
+        segments = []
+        for entry in transcript:
+            text = entry.text
+            start = float(entry.start)
+            duration = float(entry.duration)
 
-    if not caption_url:
-        return []
-
-    # Fetch the caption XML
-    caption_response = session.get(caption_url)
-    caption_response.raise_for_status()
-
-    # Parse XML captions
-    segments = []
-    try:
-        root = ET.fromstring(caption_response.content)
-        for text_elem in root.findall(".//text"):
-            start = float(text_elem.get("start", 0))
-            dur = float(text_elem.get("dur", 0))
-            text = text_elem.text or ""
-            # Clean up HTML entities
-            text = text.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
+            # Clean up whitespace
             text = re.sub(r'\s+', ' ', text).strip()
             if text:
                 segments.append(CaptionSegment(
                     text=text,
                     start_time=start,
-                    duration=dur,
+                    duration=duration,
                 ))
-    except ET.ParseError:
-        return []
 
-    return segments
+        return segments
+
+    except TranscriptsDisabled:
+        return []
+    except NoTranscriptFound:
+        return []
+    except Exception:
+        return []
 
 
 def get_patreon_transcript_segments(episode_id: int, limit: int = 1000) -> list[tuple[str, float]]:
