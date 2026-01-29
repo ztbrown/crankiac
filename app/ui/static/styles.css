@@ -231,20 +231,20 @@ h1 {
 }
 
 .timestamp-link.youtube .timestamp {
-    color: #c00;
-    background: #fee;
+    color: #0a7d0a;
+    background: #e6f4e6;
 }
 
 .timestamp-link.youtube:hover .timestamp {
-    background: #fcc;
+    background: #c8e6c8;
 }
 
 .timestamp-link.youtube .play-icon {
-    color: #c00;
+    color: #0a7d0a;
 }
 
 .timestamp-link.youtube:hover .play-icon {
-    color: #900;
+    color: #065206;
 }
 
 /* Patreon timestamp link styles */
