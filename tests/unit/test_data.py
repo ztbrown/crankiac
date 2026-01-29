@@ -9,7 +9,8 @@ def temp_db():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
 
-    with patch("app.config.Config.DATABASE_PATH", db_path):
+    # Patch at the usage site to avoid module import caching issues
+    with patch("app.data.database.Config.DATABASE_PATH", db_path):
         from app.data.database import init_db
         init_db()
         yield db_path
@@ -40,7 +41,7 @@ def test_init_db_seeds_data(temp_db):
 @pytest.mark.unit
 def test_search_items_finds_exact_match(temp_db):
     """Test search finds exact name matches."""
-    with patch("app.config.Config.DATABASE_PATH", temp_db):
+    with patch("app.data.database.Config.DATABASE_PATH", temp_db):
         from app.data.database import search_items
         results = search_items("Python")
         assert any(r["name"] == "Python" for r in results)
@@ -48,7 +49,7 @@ def test_search_items_finds_exact_match(temp_db):
 @pytest.mark.unit
 def test_search_items_finds_partial_match(temp_db):
     """Test search finds partial matches."""
-    with patch("app.config.Config.DATABASE_PATH", temp_db):
+    with patch("app.data.database.Config.DATABASE_PATH", temp_db):
         from app.data.database import search_items
         results = search_items("script")
         assert any("script" in r["name"].lower() or "script" in (r["description"] or "").lower()
@@ -57,7 +58,7 @@ def test_search_items_finds_partial_match(temp_db):
 @pytest.mark.unit
 def test_search_items_returns_empty_for_no_match(temp_db):
     """Test search returns empty list for no matches."""
-    with patch("app.config.Config.DATABASE_PATH", temp_db):
+    with patch("app.data.database.Config.DATABASE_PATH", temp_db):
         from app.data.database import search_items
         results = search_items("xyznonexistent")
         assert results == []
@@ -65,7 +66,7 @@ def test_search_items_returns_empty_for_no_match(temp_db):
 @pytest.mark.unit
 def test_search_items_returns_dict_format(temp_db):
     """Test search returns properly formatted dictionaries."""
-    with patch("app.config.Config.DATABASE_PATH", temp_db):
+    with patch("app.data.database.Config.DATABASE_PATH", temp_db):
         from app.data.database import search_items
         results = search_items("Python")
         assert len(results) > 0
