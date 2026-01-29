@@ -555,6 +555,30 @@ h1 {
     overflow-y: auto;
 }
 
+/* Script format speaker turns */
+.script-format {
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.speaker-turn {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.speaker-turn:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.speaker-label {
+    font-weight: 600;
+    color: #0066cc;
+    margin-right: 6px;
+}
+
 /* Tablet responsive styles */
 @media (max-width: 768px) {
     .container {
