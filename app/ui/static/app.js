@@ -429,8 +429,20 @@ async function handleExpandClick(event) {
 
         const data = await response.json();
 
-        // Display expanded context
-        contextContainer.innerHTML = `<p class="context expanded-context">${highlightMatch(data.context, query)}</p>`;
+        // Display expanded context as script format if speaker_turns available
+        let contextHtml;
+        if (data.speaker_turns && data.speaker_turns.length > 0) {
+            contextHtml = '<div class="context expanded-context script-format">';
+            for (const turn of data.speaker_turns) {
+                const speakerLabel = turn.speaker || "Unknown";
+                const text = highlightMatch(turn.text, query);
+                contextHtml += `<div class="speaker-turn"><span class="speaker-label">${escapeHtml(speakerLabel)}:</span> ${text}</div>`;
+            }
+            contextHtml += '</div>';
+        } else {
+            contextHtml = `<p class="context expanded-context">${highlightMatch(data.context, query)}</p>`;
+        }
+        contextContainer.innerHTML = contextHtml;
         resultItem.classList.add("expanded");
         btn.querySelector(".expand-icon").textContent = "−";
         btn.title = "Show less context";
