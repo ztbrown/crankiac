@@ -13,10 +13,26 @@ def client():
 
 @pytest.mark.unit
 def test_health_endpoint(client):
-    """Test health endpoint returns ok."""
-    response = client.get("/api/health")
-    assert response.status_code == 200
-    assert response.json == {"status": "ok"}
+    """Test health endpoint returns ok with database status."""
+    with patch("app.api.routes.get_connection") as mock_conn:
+        mock_ctx = MagicMock()
+        mock_conn.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_conn.return_value.__exit__ = MagicMock(return_value=False)
+
+        response = client.get("/api/health")
+        assert response.status_code == 200
+        assert response.json == {"status": "ok", "database": "ok"}
+
+
+@pytest.mark.unit
+def test_health_endpoint_db_error(client):
+    """Test health endpoint returns degraded when database fails."""
+    with patch("app.api.routes.get_connection") as mock_conn:
+        mock_conn.return_value.__enter__ = MagicMock(side_effect=Exception("DB error"))
+
+        response = client.get("/api/health")
+        assert response.status_code == 200
+        assert response.json == {"status": "degraded", "database": "error"}
 
 @pytest.mark.unit
 def test_search_empty_query(client):
