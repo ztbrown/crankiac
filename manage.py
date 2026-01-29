@@ -241,9 +241,9 @@ def backfill_is_free(args):
         from app.db.connection import get_cursor
         with get_cursor(commit=False) as cursor:
             cursor.execute(
-                "SELECT COUNT(*) FROM episodes WHERE youtube_url IS NOT NULL AND is_free = FALSE"
+                "SELECT COUNT(*) AS count FROM episodes WHERE youtube_url IS NOT NULL AND is_free = FALSE"
             )
-            count = cursor.fetchone()[0]
+            count = cursor.fetchone()["count"]
         print(f"[DRY RUN] Would update {count} episodes (youtube_url set but is_free=FALSE)")
     else:
         updated = repo.backfill_is_free_from_youtube_url()
