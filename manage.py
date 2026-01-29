@@ -230,6 +230,26 @@ def youtube_backfill(args):
             print(f"  ... and {len(unmatched_episodes) - 20} more")
 
 
+def backfill_is_free(args):
+    """Backfill is_free=TRUE for episodes that have youtube_url."""
+    from app.db.repository import EpisodeRepository
+
+    repo = EpisodeRepository()
+
+    if args.dry_run:
+        # Count how many would be updated
+        from app.db.connection import get_cursor
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM episodes WHERE youtube_url IS NOT NULL AND is_free = FALSE"
+            )
+            count = cursor.fetchone()[0]
+        print(f"[DRY RUN] Would update {count} episodes (youtube_url set but is_free=FALSE)")
+    else:
+        updated = repo.backfill_is_free_from_youtube_url()
+        print(f"Updated {updated} episodes: set is_free=TRUE where youtube_url was set")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Crankiac management CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -263,11 +283,15 @@ def main():
     yt_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed ambiguous match info for manual review")
 
     # youtube-backfill command
-    backfill_parser = subparsers.add_parser("youtube-backfill", help="Backfill youtube_url for episodes (does NOT update is_free)")
+    backfill_parser = subparsers.add_parser("youtube-backfill", help="Backfill youtube_url for episodes (also sets is_free=TRUE)")
     backfill_parser.add_argument("--dry-run", action="store_true", help="Show matches without updating database")
     backfill_parser.add_argument("--tolerance", type=int, default=7, help="Date tolerance in days for matching (default: 7)")
     backfill_parser.add_argument("--json", help="Path to YouTube videos JSON file (default: app/data/youtube_videos.json)")
     backfill_parser.add_argument("--verbose", "-v", action="store_true", help="Show unmatched episodes details")
+
+    # backfill-is-free command
+    is_free_parser = subparsers.add_parser("backfill-is-free", help="Set is_free=TRUE for episodes that have youtube_url")
+    is_free_parser.add_argument("--dry-run", action="store_true", help="Show count without updating database")
 
     args = parser.parse_args()
 
@@ -281,6 +305,8 @@ def main():
         youtube_sync(args)
     elif args.command == "youtube-backfill":
         youtube_backfill(args)
+    elif args.command == "backfill-is-free":
+        backfill_is_free(args)
     else:
         parser.print_help()
         sys.exit(1)

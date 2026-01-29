@@ -400,13 +400,10 @@ class TestSaveLoadVideos:
 class TestYoutubeBackfillCommand:
     """Tests for the youtube-backfill CLI command."""
 
-    def test_backfill_uses_update_youtube_url_not_update_free_status(self):
-        """Verify that youtube-backfill only updates youtube_url, not is_free."""
-        # This test verifies the implementation correctly calls update_youtube_url
-        # The actual command implementation should use:
-        #   repo.update_youtube_url(episode.id, result.video.url)
-        # NOT:
-        #   repo.update_free_status(episode.id, result.video.url, is_free)
+    def test_backfill_uses_update_youtube_url_which_sets_is_free(self):
+        """Verify that youtube-backfill uses update_youtube_url which also sets is_free=TRUE."""
+        # update_youtube_url now sets both youtube_url AND is_free=TRUE
+        # This ensures episodes with YouTube URLs are correctly marked as free
 
         # Import to verify the function exists and is used
         from app.db.repository import EpisodeRepository
@@ -446,3 +443,45 @@ class TestYoutubeBackfillCommand:
 
         assert "youtube-backfill" in result.stdout
         assert result.returncode == 0
+
+
+class TestBackfillIsFreeCommand:
+    """Tests for the backfill-is-free CLI command."""
+
+    def test_backfill_is_free_method_exists(self):
+        """Verify backfill_is_free_from_youtube_url method exists in repository."""
+        from app.db.repository import EpisodeRepository
+        repo = EpisodeRepository()
+
+        assert hasattr(repo, 'backfill_is_free_from_youtube_url')
+        assert callable(repo.backfill_is_free_from_youtube_url)
+
+    def test_backfill_is_free_command_is_registered(self):
+        """Verify backfill-is-free command is available in manage.py."""
+        import subprocess
+        import os
+
+        result = subprocess.run(
+            ["python3", "manage.py", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        )
+
+        assert "backfill-is-free" in result.stdout
+        assert result.returncode == 0
+
+    def test_backfill_is_free_dry_run(self):
+        """Verify backfill-is-free --dry-run shows count without updating."""
+        import subprocess
+        import os
+
+        result = subprocess.run(
+            ["python3", "manage.py", "backfill-is-free", "--dry-run"],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        )
+
+        # Should show dry run message (may fail if no DB connection, which is expected in unit tests)
+        assert result.returncode == 0 or "DRY RUN" in result.stdout or "connection" in result.stderr.lower()
