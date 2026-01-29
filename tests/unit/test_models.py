@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime
 from decimal import Decimal
 
-from app.db.models import Episode, TranscriptSegment
+from app.db.models import Episode, TranscriptSegment, SpeakerMapping
 
 
 @pytest.mark.unit
@@ -116,3 +116,37 @@ def test_transcript_segment_speaker_defaults_to_none():
         segment_index=0
     )
     assert segment.speaker is None
+
+
+@pytest.mark.unit
+def test_speaker_mapping_dataclass():
+    """Test SpeakerMapping dataclass with all fields."""
+    now = datetime.now()
+    mapping = SpeakerMapping(
+        id=1,
+        episode_id=1,
+        speaker_label="SPEAKER_00",
+        speaker_name="Matt",
+        created_at=now,
+        updated_at=now
+    )
+    assert mapping.id == 1
+    assert mapping.episode_id == 1
+    assert mapping.speaker_label == "SPEAKER_00"
+    assert mapping.speaker_name == "Matt"
+    assert mapping.created_at == now
+    assert mapping.updated_at == now
+
+
+@pytest.mark.unit
+def test_speaker_mapping_defaults():
+    """Test SpeakerMapping dataclass default values."""
+    mapping = SpeakerMapping(
+        id=None,
+        episode_id=1,
+        speaker_label="SPEAKER_01",
+        speaker_name="Will"
+    )
+    assert mapping.id is None
+    assert mapping.created_at is None
+    assert mapping.updated_at is None

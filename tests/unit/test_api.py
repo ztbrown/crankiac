@@ -354,3 +354,100 @@ def test_search_with_invalid_content_type_defaults_to_all(client):
         assert "results" in data
         # Invalid content_type should be excluded from filters
         assert "content_type" not in data.get("filters", {})
+
+
+@pytest.mark.unit
+def test_speaker_mappings_endpoint_missing_episode_id(client):
+    """Test speaker-mappings endpoint requires episode_id."""
+    response = client.get("/api/transcripts/speaker-mappings")
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "episode_id" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_speaker_mappings_get_endpoint(client):
+    """Test GET speaker-mappings returns mappings for episode."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "id": 1,
+            "speaker_label": "SPEAKER_00",
+            "speaker_name": "Matt",
+            "created_at": datetime(2023, 1, 1),
+            "updated_at": datetime(2023, 1, 1)
+        },
+        {
+            "id": 2,
+            "speaker_label": "SPEAKER_01",
+            "speaker_name": "Will",
+            "created_at": datetime(2023, 1, 1),
+            "updated_at": datetime(2023, 1, 1)
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/speaker-mappings?episode_id=1")
+        assert response.status_code == 200
+        data = response.json
+        assert "episode_id" in data
+        assert data["episode_id"] == 1
+        assert "mappings" in data
+        assert len(data["mappings"]) == 2
+
+
+@pytest.mark.unit
+def test_speaker_mappings_put_missing_body(client):
+    """Test PUT speaker-mappings requires JSON body."""
+    response = client.put("/api/transcripts/speaker-mappings")
+    # Flask returns 415 when no content-type is provided
+    assert response.status_code in (400, 415)
+
+
+@pytest.mark.unit
+def test_speaker_mappings_put_missing_episode_id(client):
+    """Test PUT speaker-mappings requires episode_id."""
+    response = client.put(
+        "/api/transcripts/speaker-mappings",
+        json={"mappings": []}
+    )
+    assert response.status_code == 400
+    assert "episode_id" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_speaker_mappings_delete_missing_params(client):
+    """Test DELETE speaker-mappings requires episode_id and speaker_label."""
+    response = client.delete("/api/transcripts/speaker-mappings")
+    assert response.status_code == 400
+    assert "episode_id" in response.json["error"]
+
+    response = client.delete("/api/transcripts/speaker-mappings?episode_id=1")
+    assert response.status_code == 400
+    assert "speaker_label" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_apply_speaker_mapping_function():
+    """Test the apply_speaker_mapping helper function."""
+    from app.api.transcript_routes import apply_speaker_mapping
+
+    mappings = {"SPEAKER_00": "Matt", "SPEAKER_01": "Will"}
+
+    # Returns mapped name
+    assert apply_speaker_mapping("SPEAKER_00", mappings) == "Matt"
+    assert apply_speaker_mapping("SPEAKER_01", mappings) == "Will"
+
+    # Returns original if no mapping
+    assert apply_speaker_mapping("SPEAKER_02", mappings) == "SPEAKER_02"
+
+    # Returns None for None input
+    assert apply_speaker_mapping(None, mappings) is None
+
+    # Works with empty mappings
+    assert apply_speaker_mapping("SPEAKER_00", {}) == "SPEAKER_00"

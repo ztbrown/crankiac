@@ -1,7 +1,34 @@
+from typing import Dict, Optional
 from flask import Blueprint, jsonify, request
 from app.db.connection import get_cursor
 
 transcript_api = Blueprint("transcript_api", __name__, url_prefix="/api/transcripts")
+
+
+def get_speaker_mappings_for_episode(episode_id: int) -> Dict[str, str]:
+    """
+    Get speaker label to name mappings for an episode.
+
+    Returns:
+        Dict mapping speaker_label -> speaker_name (e.g., {"SPEAKER_00": "Matt"})
+    """
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT speaker_label, speaker_name
+            FROM speaker_mappings
+            WHERE episode_id = %s
+            """,
+            (episode_id,)
+        )
+        return {row["speaker_label"]: row["speaker_name"] for row in cursor.fetchall()}
+
+
+def apply_speaker_mapping(speaker_label: Optional[str], mappings: Dict[str, str]) -> Optional[str]:
+    """Apply speaker mapping if available, otherwise return original label."""
+    if speaker_label is None:
+        return None
+    return mappings.get(speaker_label, speaker_label)
 
 @transcript_api.route("/search")
 def search_transcripts():
@@ -248,6 +275,7 @@ def get_extended_context():
 
     Returns:
         JSON with extended context and segment info.
+        Speaker labels are mapped to names if mappings exist.
     """
     episode_id = request.args.get("episode_id", type=int)
     segment_index = request.args.get("segment_index", type=int)
@@ -255,6 +283,9 @@ def get_extended_context():
 
     if not episode_id or segment_index is None:
         return jsonify({"error": "episode_id and segment_index required"}), 400
+
+    # Get speaker mappings for this episode
+    speaker_mappings = get_speaker_mappings_for_episode(episode_id)
 
     with get_cursor(commit=False) as cursor:
         # Get the extended context
@@ -288,27 +319,27 @@ def get_extended_context():
         for i, row in enumerate(segments):
             if row["segment_index"] == segment_index:
                 center_word_index = i
-                center_speaker = row["speaker"]
+                center_speaker = apply_speaker_mapping(row["speaker"], speaker_mappings)
                 break
 
-        # Build speaker turns for the context
+        # Build speaker turns for the context (with mapped names)
         speaker_turns = []
-        current_speaker = None
+        current_speaker_label = None
         current_words = []
         for row in segments:
-            if row["speaker"] != current_speaker:
+            if row["speaker"] != current_speaker_label:
                 if current_words:
                     speaker_turns.append({
-                        "speaker": current_speaker,
+                        "speaker": apply_speaker_mapping(current_speaker_label, speaker_mappings),
                         "text": " ".join(current_words)
                     })
-                current_speaker = row["speaker"]
+                current_speaker_label = row["speaker"]
                 current_words = [row["word"]]
             else:
                 current_words.append(row["word"])
         if current_words:
             speaker_turns.append({
-                "speaker": current_speaker,
+                "speaker": apply_speaker_mapping(current_speaker_label, speaker_mappings),
                 "text": " ".join(current_words)
             })
 
@@ -599,4 +630,165 @@ def search_by_speaker():
             "total": total,
             "limit": limit,
             "offset": offset
+        })
+
+
+@transcript_api.route("/speaker-mappings")
+def get_speaker_mappings():
+    """
+    Get speaker label to name mappings for an episode.
+
+    Query params:
+        episode_id: Episode ID (required)
+
+    Returns:
+        JSON with list of mappings (speaker_label -> speaker_name).
+    """
+    episode_id = request.args.get("episode_id", type=int)
+
+    if not episode_id:
+        return jsonify({"error": "episode_id parameter required"}), 400
+
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT id, speaker_label, speaker_name, created_at, updated_at
+            FROM speaker_mappings
+            WHERE episode_id = %s
+            ORDER BY speaker_label
+            """,
+            (episode_id,)
+        )
+
+        mappings = []
+        for row in cursor.fetchall():
+            mappings.append({
+                "id": row["id"],
+                "speaker_label": row["speaker_label"],
+                "speaker_name": row["speaker_name"],
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
+            })
+
+        return jsonify({
+            "episode_id": episode_id,
+            "mappings": mappings
+        })
+
+
+@transcript_api.route("/speaker-mappings", methods=["PUT"])
+def set_speaker_mappings():
+    """
+    Create or update speaker mappings for an episode.
+
+    Request body (JSON):
+        episode_id: Episode ID (required)
+        mappings: List of {speaker_label, speaker_name} objects
+
+    Returns:
+        JSON with the updated mappings.
+    """
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+
+    episode_id = data.get("episode_id")
+    mappings = data.get("mappings", [])
+
+    if not episode_id:
+        return jsonify({"error": "episode_id required"}), 400
+
+    if not isinstance(mappings, list):
+        return jsonify({"error": "mappings must be a list"}), 400
+
+    with get_cursor(commit=True) as cursor:
+        # Verify episode exists
+        cursor.execute("SELECT id FROM episodes WHERE id = %s", (episode_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": f"Episode {episode_id} not found"}), 404
+
+        # Upsert each mapping
+        for mapping in mappings:
+            speaker_label = mapping.get("speaker_label", "").strip()
+            speaker_name = mapping.get("speaker_name", "").strip()
+
+            if not speaker_label or not speaker_name:
+                continue
+
+            cursor.execute(
+                """
+                INSERT INTO speaker_mappings (episode_id, speaker_label, speaker_name)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (episode_id, speaker_label)
+                DO UPDATE SET speaker_name = EXCLUDED.speaker_name, updated_at = CURRENT_TIMESTAMP
+                """,
+                (episode_id, speaker_label, speaker_name)
+            )
+
+        # Return updated mappings
+        cursor.execute(
+            """
+            SELECT id, speaker_label, speaker_name, created_at, updated_at
+            FROM speaker_mappings
+            WHERE episode_id = %s
+            ORDER BY speaker_label
+            """,
+            (episode_id,)
+        )
+
+        result_mappings = []
+        for row in cursor.fetchall():
+            result_mappings.append({
+                "id": row["id"],
+                "speaker_label": row["speaker_label"],
+                "speaker_name": row["speaker_name"],
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
+            })
+
+        return jsonify({
+            "episode_id": episode_id,
+            "mappings": result_mappings
+        })
+
+
+@transcript_api.route("/speaker-mappings", methods=["DELETE"])
+def delete_speaker_mapping():
+    """
+    Delete a speaker mapping.
+
+    Query params:
+        episode_id: Episode ID (required)
+        speaker_label: Speaker label to delete (required)
+
+    Returns:
+        JSON with success status.
+    """
+    episode_id = request.args.get("episode_id", type=int)
+    speaker_label = request.args.get("speaker_label", "").strip()
+
+    if not episode_id:
+        return jsonify({"error": "episode_id parameter required"}), 400
+
+    if not speaker_label:
+        return jsonify({"error": "speaker_label parameter required"}), 400
+
+    with get_cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            DELETE FROM speaker_mappings
+            WHERE episode_id = %s AND speaker_label = %s
+            RETURNING id
+            """,
+            (episode_id, speaker_label)
+        )
+
+        deleted = cursor.fetchone()
+        if not deleted:
+            return jsonify({"error": "Mapping not found"}), 404
+
+        return jsonify({
+            "success": True,
+            "deleted_id": deleted["id"]
         })
