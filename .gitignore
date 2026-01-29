@@ -36,3 +36,4 @@ htmlcov/
 .claude/
 .beads/
 .logs/
+state.json
