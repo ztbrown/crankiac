@@ -434,3 +434,51 @@ def test_search_by_speaker_invalid_offset_returns_400(client):
     response = client.get("/api/transcripts/search/speaker?speaker=test&offset=xyz")
     assert response.status_code == 400
     assert response.json == {"error": "limit and offset must be integers"}
+
+
+# Tests for map_speaker_to_name function
+@pytest.mark.unit
+def test_map_speaker_to_name_none_returns_none():
+    """Test that None input returns None."""
+    from app.api.transcript_routes import map_speaker_to_name
+    assert map_speaker_to_name(None) is None
+
+
+@pytest.mark.unit
+def test_map_speaker_to_name_known_speaker_unchanged():
+    """Test that already known speaker names are returned unchanged."""
+    from app.api.transcript_routes import map_speaker_to_name
+    assert map_speaker_to_name("Matt") == "Matt"
+    assert map_speaker_to_name("Will") == "Will"
+    assert map_speaker_to_name("Felix") == "Felix"
+    assert map_speaker_to_name("Amber") == "Amber"
+    assert map_speaker_to_name("Virgil") == "Virgil"
+
+
+@pytest.mark.unit
+def test_map_speaker_to_name_speaker_xx_mapped():
+    """Test that SPEAKER_XX format is mapped to known speakers by index."""
+    from app.api.transcript_routes import map_speaker_to_name
+    assert map_speaker_to_name("SPEAKER_00") == "Matt"
+    assert map_speaker_to_name("SPEAKER_01") == "Will"
+    assert map_speaker_to_name("SPEAKER_02") == "Felix"
+    assert map_speaker_to_name("SPEAKER_03") == "Amber"
+    assert map_speaker_to_name("SPEAKER_04") == "Virgil"
+
+
+@pytest.mark.unit
+def test_map_speaker_to_name_out_of_range_unchanged():
+    """Test that SPEAKER_XX with index >= len(KNOWN_SPEAKERS) returns original."""
+    from app.api.transcript_routes import map_speaker_to_name
+    assert map_speaker_to_name("SPEAKER_05") == "SPEAKER_05"
+    assert map_speaker_to_name("SPEAKER_99") == "SPEAKER_99"
+
+
+@pytest.mark.unit
+def test_map_speaker_to_name_unknown_format_unchanged():
+    """Test that unknown speaker formats are returned unchanged."""
+    from app.api.transcript_routes import map_speaker_to_name
+    assert map_speaker_to_name("UNKNOWN") == "UNKNOWN"
+    assert map_speaker_to_name("Speaker_00") == "Speaker_00"  # Wrong case
+    assert map_speaker_to_name("SPEAKER_A") == "SPEAKER_A"  # Non-numeric
+    assert map_speaker_to_name("") == ""

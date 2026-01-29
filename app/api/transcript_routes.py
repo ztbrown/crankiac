@@ -1,7 +1,39 @@
+import re
+from typing import Optional
 from flask import Blueprint, jsonify, request
 from app.db.connection import get_cursor
+from app.transcription.diarization import KNOWN_SPEAKERS
 
 transcript_api = Blueprint("transcript_api", __name__, url_prefix="/api/transcripts")
+
+
+def map_speaker_to_name(speaker: Optional[str]) -> Optional[str]:
+    """
+    Map generic speaker labels (SPEAKER_00, SPEAKER_01, etc.) to known host names.
+
+    Args:
+        speaker: Speaker label from the transcript, e.g., "SPEAKER_00" or "Matt"
+
+    Returns:
+        Known speaker name if mapping exists, otherwise the original label.
+        Returns None if input is None.
+    """
+    if speaker is None:
+        return None
+
+    # If already a known speaker name, return as-is
+    if speaker in KNOWN_SPEAKERS:
+        return speaker
+
+    # Try to extract index from SPEAKER_XX format
+    match = re.match(r"^SPEAKER_(\d+)$", speaker)
+    if match:
+        index = int(match.group(1))
+        if index < len(KNOWN_SPEAKERS):
+            return KNOWN_SPEAKERS[index]
+
+    # No mapping available, return original
+    return speaker
 
 @transcript_api.route("/search")
 def search_transcripts():
@@ -294,7 +326,7 @@ def get_extended_context():
         for i, row in enumerate(segments):
             if row["segment_index"] == segment_index:
                 center_word_index = i
-                center_speaker = row["speaker"]
+                center_speaker = map_speaker_to_name(row["speaker"])
                 break
 
         # Build speaker turns for the context
@@ -302,13 +334,14 @@ def get_extended_context():
         current_speaker = None
         current_words = []
         for row in segments:
-            if row["speaker"] != current_speaker:
+            mapped_speaker = map_speaker_to_name(row["speaker"])
+            if mapped_speaker != current_speaker:
                 if current_words:
                     speaker_turns.append({
                         "speaker": current_speaker,
                         "text": " ".join(current_words)
                     })
-                current_speaker = row["speaker"]
+                current_speaker = mapped_speaker
                 current_words = [row["word"]]
             else:
                 current_words.append(row["word"])
