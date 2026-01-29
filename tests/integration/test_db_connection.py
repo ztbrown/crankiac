@@ -85,7 +85,7 @@ class TestEndpointsReturn200:
     def test_transcript_search_returns_200(self, client, mock_cursor):
         """Transcript search endpoint must return 200."""
         with patch("app.api.transcript_routes.get_cursor", return_value=mock_cursor):
-            response = client.get("/api/transcripts/search?q=test&fuzzy=false")
+            response = client.get("/api/transcripts/search?q=test")
             assert response.status_code == 200, f"Expected 200, got {response.status_code}"
 
     @pytest.mark.integration

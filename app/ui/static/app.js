@@ -7,7 +7,6 @@ const filterDateFrom = document.getElementById("filter-date-from");
 const filterDateTo = document.getElementById("filter-date-to");
 const filterEpisode = document.getElementById("filter-episode");
 const filterContentType = document.getElementById("filter-content-type");
-const filterFuzzy = document.getElementById("filter-fuzzy");
 const clearFiltersBtn = document.getElementById("clear-filters");
 
 function getFilters() {
@@ -25,8 +24,8 @@ function buildSearchUrl(query) {
     for (const [key, value] of Object.entries(filters)) {
         params.append(key, value);
     }
-    // Add fuzzy parameter based on checkbox state
-    params.append("fuzzy", filterFuzzy.checked ? "true" : "false");
+    // Fuzzy search is always enabled
+    params.append("fuzzy", "true");
     return `/api/transcripts/search?${params.toString()}`;
 }
 
@@ -58,7 +57,6 @@ function clearFilters() {
     filterDateTo.value = "";
     filterEpisode.value = "";
     filterContentType.value = "all";
-    filterFuzzy.checked = true;
     if (searchInput.value.trim()) {
         performSearch();
     }
@@ -549,7 +547,7 @@ loadOnThisDay();
 clearFiltersBtn.addEventListener("click", clearFilters);
 
 // Re-search when filters change
-[filterDateFrom, filterDateTo, filterEpisode, filterContentType, filterFuzzy].forEach(el => {
+[filterDateFrom, filterDateTo, filterEpisode, filterContentType].forEach(el => {
     el.addEventListener("change", () => {
         if (searchInput.value.trim()) {
             performSearch();
