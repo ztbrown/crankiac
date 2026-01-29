@@ -70,6 +70,44 @@ def test_context_endpoint_missing_segment_index(client):
 
 
 @pytest.mark.unit
+def test_context_endpoint_speaker_turns_include_start_time(client):
+    """Test context endpoint includes start_time in speaker_turns."""
+    from decimal import Decimal
+    mock_segments = [
+        {"word": "Hello", "segment_index": 10, "start_time": Decimal("1.5"), "end_time": Decimal("2.0"), "speaker": "SPEAKER_01"},
+        {"word": "world", "segment_index": 11, "start_time": Decimal("2.0"), "end_time": Decimal("2.5"), "speaker": "SPEAKER_01"},
+        {"word": "Hi", "segment_index": 12, "start_time": Decimal("3.0"), "end_time": Decimal("3.5"), "speaker": "SPEAKER_02"},
+        {"word": "there", "segment_index": 13, "start_time": Decimal("3.5"), "end_time": Decimal("4.0"), "speaker": "SPEAKER_02"},
+    ]
+    mock_mappings = {"SPEAKER_01": "Will", "SPEAKER_02": "Felix"}
+
+    with patch("app.api.transcript_routes.get_speaker_mappings_for_episode") as mock_get_mappings:
+        mock_get_mappings.return_value = mock_mappings
+        with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+            mock_ctx = MagicMock()
+            mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+            mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+            mock_ctx.fetchall.return_value = mock_segments
+
+            response = client.get("/api/transcripts/context?episode_id=1&segment_index=11")
+            assert response.status_code == 200
+            data = response.json
+
+            assert "speaker_turns" in data
+            assert len(data["speaker_turns"]) == 2
+
+            # First turn: Will (mapped from SPEAKER_01) starting at 1.5
+            assert data["speaker_turns"][0]["speaker"] == "Will"
+            assert data["speaker_turns"][0]["text"] == "Hello world"
+            assert data["speaker_turns"][0]["start_time"] == 1.5
+
+            # Second turn: Felix (mapped from SPEAKER_02) starting at 3.0
+            assert data["speaker_turns"][1]["speaker"] == "Felix"
+            assert data["speaker_turns"][1]["text"] == "Hi there"
+            assert data["speaker_turns"][1]["start_time"] == 3.0
+
+
+@pytest.mark.unit
 def test_speakers_endpoint(client):
     """Test speakers endpoint returns list of speakers."""
     mock_rows = [

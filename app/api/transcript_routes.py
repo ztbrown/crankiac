@@ -322,25 +322,29 @@ def get_extended_context():
                 center_speaker = apply_speaker_mapping(row["speaker"], speaker_mappings)
                 break
 
-        # Build speaker turns for the context (with mapped names)
+        # Build speaker turns for the context (with mapped names and timestamps)
         speaker_turns = []
         current_speaker_label = None
         current_words = []
+        current_start_time = None
         for row in segments:
             if row["speaker"] != current_speaker_label:
                 if current_words:
                     speaker_turns.append({
                         "speaker": apply_speaker_mapping(current_speaker_label, speaker_mappings),
-                        "text": " ".join(current_words)
+                        "text": " ".join(current_words),
+                        "start_time": float(current_start_time)
                     })
                 current_speaker_label = row["speaker"]
                 current_words = [row["word"]]
+                current_start_time = row["start_time"]
             else:
                 current_words.append(row["word"])
         if current_words:
             speaker_turns.append({
                 "speaker": apply_speaker_mapping(current_speaker_label, speaker_mappings),
-                "text": " ".join(current_words)
+                "text": " ".join(current_words),
+                "start_time": float(current_start_time)
             })
 
         return jsonify({
