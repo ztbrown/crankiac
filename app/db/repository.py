@@ -132,6 +132,22 @@ class EpisodeRepository:
                 return Episode(**row)
             return None
 
+    def update_youtube_id(self, episode_id: int, youtube_id: str) -> None:
+        """Update the YouTube video ID for an episode."""
+        with get_cursor() as cursor:
+            cursor.execute(
+                "UPDATE episodes SET youtube_id = %s WHERE id = %s",
+                (youtube_id, episode_id)
+            )
+
+    def get_episodes_for_youtube_matching(self) -> list[dict]:
+        """Get episodes without youtube_id for matching."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT id, title FROM episodes WHERE youtube_id IS NULL ORDER BY published_at DESC"
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
 class TranscriptRepository:
     """Data access for transcript segments."""
 
