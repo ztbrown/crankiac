@@ -105,6 +105,33 @@ class EpisodeRepository:
             )
             return [Episode(**row) for row in cursor.fetchall()]
 
+    def get_with_youtube_needing_captions(self) -> list[Episode]:
+        """Get episodes that have YouTube URLs but no transcripts yet."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                """
+                SELECT e.* FROM episodes e
+                LEFT JOIN transcript_segments ts ON e.id = ts.episode_id
+                WHERE e.youtube_url IS NOT NULL
+                AND ts.id IS NULL
+                GROUP BY e.id
+                ORDER BY e.published_at DESC
+                """
+            )
+            return [Episode(**row) for row in cursor.fetchall()]
+
+    def get_by_id(self, episode_id: int) -> Optional[Episode]:
+        """Get episode by ID."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT * FROM episodes WHERE id = %s",
+                (episode_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return Episode(**row)
+            return None
+
 class TranscriptRepository:
     """Data access for transcript segments."""
 

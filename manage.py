@@ -147,6 +147,94 @@ def youtube_sync(args):
                 print(f"  Match 2 (score={res.runner_up_score}): {res.runner_up.title}")
                 print(f"    URL: {res.runner_up.url}")
 
+def youtube_captions(args):
+    """Fetch YouTube captions for episodes with YouTube URLs."""
+    from app.db.repository import EpisodeRepository
+    from app.youtube.captions import (
+        YouTubeCaptionClient,
+        store_captions_for_episode,
+        CaptionFetchError,
+    )
+    from app.transcription.storage import TranscriptStorage
+
+    repo = EpisodeRepository()
+    storage = TranscriptStorage()
+
+    # Get episodes that need captions
+    if args.episode_id:
+        episode = repo.get_by_id(args.episode_id)
+        if not episode:
+            print(f"Error: Episode {args.episode_id} not found")
+            return
+        if not episode.youtube_url:
+            print(f"Error: Episode {args.episode_id} has no YouTube URL")
+            return
+        episodes = [episode]
+    else:
+        episodes = repo.get_with_youtube_needing_captions()
+
+    if args.limit:
+        episodes = episodes[:args.limit]
+
+    if not episodes:
+        print("No episodes need captions.")
+        return
+
+    print(f"Found {len(episodes)} episode(s) with YouTube URLs needing captions")
+
+    client = YouTubeCaptionClient(whisper_model=args.model)
+
+    success = 0
+    failed = 0
+    fallback = 0
+
+    for episode in episodes:
+        print(f"\nProcessing: {episode.title[:50]}...")
+        print(f"  YouTube URL: {episode.youtube_url}")
+
+        # Skip if episode already has transcript
+        if storage.has_transcript(episode.id):
+            if args.force:
+                print("  Deleting existing transcript...")
+                storage.delete_episode_transcript(episode.id)
+            else:
+                print("  [SKIP] Already has transcript (use --force to overwrite)")
+                continue
+
+        try:
+            result = client.fetch_captions(
+                episode.youtube_url,
+                fallback_to_whisper=not args.no_fallback,
+            )
+
+            if result:
+                words_stored = store_captions_for_episode(episode.id, result)
+                print(f"  [OK] Stored {words_stored} words from {result.source}")
+                if result.source == 'whisper_fallback':
+                    fallback += 1
+                success += 1
+
+                # Mark episode as processed
+                repo.mark_processed(episode.id)
+            else:
+                print("  [FAIL] No captions available and fallback disabled")
+                failed += 1
+
+        except CaptionFetchError as e:
+            print(f"  [ERROR] {e}")
+            failed += 1
+        except Exception as e:
+            print(f"  [ERROR] Unexpected error: {e}")
+            failed += 1
+
+    print(f"\n=== Results ===")
+    print(f"  Processed: {len(episodes)}")
+    print(f"  Success: {success}")
+    print(f"  Failed: {failed}")
+    if fallback:
+        print(f"  Used Whisper fallback: {fallback}")
+
+
 def youtube_backfill(args):
     """Backfill youtube_url for episodes that don't have one."""
     import os
@@ -269,6 +357,14 @@ def main():
     backfill_parser.add_argument("--json", help="Path to YouTube videos JSON file (default: app/data/youtube_videos.json)")
     backfill_parser.add_argument("--verbose", "-v", action="store_true", help="Show unmatched episodes details")
 
+    # youtube-captions command
+    captions_parser = subparsers.add_parser("youtube-captions", help="Fetch YouTube auto-captions for episodes with YouTube URLs")
+    captions_parser.add_argument("--episode-id", type=int, help="Process specific episode by ID")
+    captions_parser.add_argument("--limit", type=int, help="Limit number of episodes to process")
+    captions_parser.add_argument("--force", action="store_true", help="Overwrite existing transcripts")
+    captions_parser.add_argument("--no-fallback", action="store_true", help="Don't use Whisper fallback if captions unavailable")
+    captions_parser.add_argument("--model", default="base", help="Whisper model for fallback (tiny/base/small/medium/large)")
+
     args = parser.parse_args()
 
     if args.command == "migrate":
@@ -281,6 +377,8 @@ def main():
         youtube_sync(args)
     elif args.command == "youtube-backfill":
         youtube_backfill(args)
+    elif args.command == "youtube-captions":
+        youtube_captions(args)
     else:
         parser.print_help()
         sys.exit(1)
