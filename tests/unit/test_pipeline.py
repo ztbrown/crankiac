@@ -87,6 +87,14 @@ def test_process_episode_success(pipeline):
 
 
 @pytest.mark.unit
+def test_process_episode_raises_when_id_is_none(pipeline):
+    episode = make_episode(id=None)
+    with pytest.raises(ValueError, match="episode.id is None"):
+        pipeline.process_episode(episode)
+    pipeline.downloader.download.assert_not_called()
+
+
+@pytest.mark.unit
 def test_process_episode_skips_already_processed(pipeline):
     episode = make_episode(processed=True)
     result = pipeline.process_episode(episode)

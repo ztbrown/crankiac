@@ -102,7 +102,16 @@ class EpisodePipeline:
 
         Returns:
             True if successful, False otherwise.
+
+        Raises:
+            ValueError: If episode.id is None (episode must be persisted first).
         """
+        if episode.id is None:
+            raise ValueError(
+                f"Cannot process episode '{episode.title}': episode.id is None. "
+                "Episode must be saved to database before processing."
+            )
+
         logger.info(f"Processing: {episode.title}")
 
         # Skip if already processed
