@@ -27,3 +27,12 @@ class TranscriptSegment:
     segment_index: int
     speaker: Optional[str] = None
     created_at: Optional[datetime] = None
+
+@dataclass
+class SpeakerMapping:
+    id: Optional[int]
+    episode_id: int
+    speaker_label: str
+    speaker_name: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
