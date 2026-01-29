@@ -146,47 +146,6 @@ function getYoutubeEmbedUrl(videoId, startSeconds) {
     return `https://www.youtube.com/embed/${videoId}?start=${start}&autoplay=1`;
 }
 
-function toggleYoutubeEmbed(event) {
-    const btn = event.currentTarget;
-    const resultItem = btn.closest(".result-item");
-    const contextContainer = resultItem.querySelector(".context-container");
-    const embedContainer = resultItem.querySelector(".youtube-embed-container");
-
-    if (embedContainer) {
-        // Close embed
-        embedContainer.remove();
-        btn.classList.remove("active");
-        btn.title = "Watch inline";
-        return;
-    }
-
-    // Create embed
-    const youtubeUrl = btn.dataset.youtubeUrl;
-    const startTime = parseFloat(btn.dataset.startTime);
-    const videoId = extractYoutubeVideoId(youtubeUrl);
-
-    if (!videoId) {
-        console.error("Could not extract video ID from URL:", youtubeUrl);
-        return;
-    }
-
-    const embedUrl = getYoutubeEmbedUrl(videoId, startTime);
-    const container = document.createElement("div");
-    container.className = "youtube-embed-container";
-    container.innerHTML = `
-        <iframe
-            src="${embedUrl}"
-            frameborder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen>
-        </iframe>
-    `;
-
-    contextContainer.insertAdjacentElement("afterend", container);
-    btn.classList.add("active");
-    btn.title = "Close video";
-}
-
 function getMatchTypeBadge(item) {
     // If no similarity field, it's an exact match (non-fuzzy search)
     if (item.similarity === undefined) {
@@ -245,13 +204,7 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
                        title="Watch on YouTube at ${timestamp}">
                         <span class="timestamp">${timestamp}</span>
                         <span class="play-icon">&#9654;</span>
-                    </a>
-                    <button class="embed-btn"
-                            data-youtube-url="${escapeHtml(item.youtube_url)}"
-                            data-start-time="${item.start_time}"
-                            title="Watch inline">
-                        <span class="embed-icon">&#9632;</span>
-                    </button>`;
+                    </a>`;
             } else {
                 timestampLink = `
                     <a href="${getPatreonUrl(item.patreon_id)}"
@@ -308,11 +261,6 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
         link.addEventListener("click", (e) => {
             handlePatreonClick(e, link.dataset.patreonId, link.dataset.timestamp);
         });
-    });
-
-    // Add click handlers to YouTube embed buttons
-    document.querySelectorAll(".embed-btn").forEach(btn => {
-        btn.addEventListener("click", toggleYoutubeEmbed);
     });
 
 }
