@@ -1,0 +1,7 @@
+{
+  "_note": "MCP servers inherited from project root .mcp.json. Mayor uses Puppeteer for UI visibility during coordination.",
+  "permissions": {
+    "allow": [],
+    "deny": []
+  }
+}

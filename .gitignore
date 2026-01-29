@@ -40,3 +40,7 @@ htmlcov/
 # Allow crew member Claude settings
 !crew/.claude/
 !crew/**/.claude/
+
+# Allow mayor and witness Claude settings
+!mayor/.claude/
+!witness/.claude/

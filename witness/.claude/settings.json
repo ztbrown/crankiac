@@ -1,0 +1,7 @@
+{
+  "_note": "MCP servers inherited from project root .mcp.json. Witness uses Puppeteer for health monitoring and visual regression detection.",
+  "permissions": {
+    "allow": [],
+    "deny": []
+  }
+}
