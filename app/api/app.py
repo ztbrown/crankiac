@@ -9,7 +9,7 @@ from app.config import Config
 def create_app():
     """Application factory."""
     app = Flask(__name__, static_folder="../ui/static", static_url_path="/static")
-    CORS(app)
+    CORS(app, origins=Config.get_cors_origins())
 
     app.register_blueprint(api)
     app.register_blueprint(transcript_api)
