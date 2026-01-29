@@ -357,7 +357,14 @@ async function handleExpandClick(event) {
         // Build the expanded content
         let expandedHtml = '';
 
-        // Add YouTube embed if this is a free episode with youtube_url
+        // Format context with speaker labels if available
+        if (data.speaker_turns && data.speaker_turns.length > 0) {
+            expandedHtml += formatSpeakerTurns(data.speaker_turns, query);
+        } else {
+            expandedHtml += `<p class="context expanded-context">${highlightMatch(data.context, query)}</p>`;
+        }
+
+        // Add YouTube embed below the context if this is a free episode
         if (originalItem.youtube_url) {
             const videoId = extractYoutubeVideoId(originalItem.youtube_url);
             if (videoId) {
@@ -373,13 +380,6 @@ async function handleExpandClick(event) {
                     </div>
                 `;
             }
-        }
-
-        // Format context with speaker labels if available
-        if (data.speaker_turns && data.speaker_turns.length > 0) {
-            expandedHtml += formatSpeakerTurns(data.speaker_turns, query);
-        } else {
-            expandedHtml += `<p class="context expanded-context">${highlightMatch(data.context, query)}</p>`;
         }
 
         contextContainer.innerHTML = expandedHtml;
