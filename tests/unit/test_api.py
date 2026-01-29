@@ -386,3 +386,51 @@ def test_list_episodes_invalid_offset_returns_400(client):
     response = client.get("/api/transcripts/episodes?offset=xyz")
     assert response.status_code == 400
     assert response.json == {"error": "limit and offset must be integers"}
+
+
+@pytest.mark.unit
+def test_transcript_search_invalid_limit_returns_400(client):
+    """Test that invalid limit parameter in search returns 400 instead of raising ValueError."""
+    response = client.get("/api/transcripts/search?q=test&limit=abc")
+    assert response.status_code == 400
+    assert response.json == {"error": "limit and offset must be integers"}
+
+
+@pytest.mark.unit
+def test_transcript_search_invalid_offset_returns_400(client):
+    """Test that invalid offset parameter in search returns 400 instead of raising ValueError."""
+    response = client.get("/api/transcripts/search?q=test&offset=xyz")
+    assert response.status_code == 400
+    assert response.json == {"error": "limit and offset must be integers"}
+
+
+@pytest.mark.unit
+def test_context_invalid_radius_returns_400(client):
+    """Test that invalid radius parameter returns 400 instead of raising ValueError."""
+    response = client.get("/api/transcripts/context?episode_id=1&segment_index=0&radius=abc")
+    assert response.status_code == 400
+    assert response.json == {"error": "radius must be an integer"}
+
+
+@pytest.mark.unit
+def test_on_this_day_invalid_limit_returns_400(client):
+    """Test that invalid limit parameter returns 400 instead of raising ValueError."""
+    response = client.get("/api/transcripts/on-this-day?limit=abc")
+    assert response.status_code == 400
+    assert response.json == {"error": "limit must be an integer"}
+
+
+@pytest.mark.unit
+def test_search_by_speaker_invalid_limit_returns_400(client):
+    """Test that invalid limit parameter returns 400 instead of raising ValueError."""
+    response = client.get("/api/transcripts/search/speaker?speaker=test&limit=abc")
+    assert response.status_code == 400
+    assert response.json == {"error": "limit and offset must be integers"}
+
+
+@pytest.mark.unit
+def test_search_by_speaker_invalid_offset_returns_400(client):
+    """Test that invalid offset parameter returns 400 instead of raising ValueError."""
+    response = client.get("/api/transcripts/search/speaker?speaker=test&offset=xyz")
+    assert response.status_code == 400
+    assert response.json == {"error": "limit and offset must be integers"}
