@@ -21,8 +21,11 @@ def search_transcripts():
         JSON with matches including episode info and timestamps.
     """
     query = request.args.get("q", "").strip()
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    try:
+        limit = min(int(request.args.get("limit", 100)), 500)
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        return jsonify({"error": "limit and offset must be integers"}), 400
 
     # Parse filter parameters
     date_from = request.args.get("date_from", "").strip()
@@ -251,7 +254,10 @@ def get_extended_context():
     """
     episode_id = request.args.get("episode_id", type=int)
     segment_index = request.args.get("segment_index", type=int)
-    radius = min(int(request.args.get("radius", 50)), 200)
+    try:
+        radius = min(int(request.args.get("radius", 50)), 200)
+    except ValueError:
+        return jsonify({"error": "radius must be an integer"}), 400
 
     if not episode_id or segment_index is None:
         return jsonify({"error": "episode_id and segment_index required"}), 400
@@ -431,7 +437,10 @@ def on_this_day():
     today = date.today()
     month = request.args.get("month", type=int) or today.month
     day = request.args.get("day", type=int) or today.day
-    limit = min(int(request.args.get("limit", 10)), 50)
+    try:
+        limit = min(int(request.args.get("limit", 10)), 50)
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
 
     with get_cursor(commit=False) as cursor:
         cursor.execute(
@@ -489,8 +498,11 @@ def search_by_speaker():
     """
     query = request.args.get("q", "").strip()
     speaker = request.args.get("speaker", "").strip()
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    try:
+        limit = min(int(request.args.get("limit", 100)), 500)
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        return jsonify({"error": "limit and offset must be integers"}), 400
 
     if not speaker:
         return jsonify({"error": "speaker parameter required"}), 400
