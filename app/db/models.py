@@ -36,3 +36,15 @@ class SpeakerMapping:
     speaker_name: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+@dataclass
+class TimestampAnchor:
+    """Maps a Patreon transcript timestamp to a YouTube timestamp."""
+    id: Optional[int]
+    episode_id: int
+    patreon_time: Decimal
+    youtube_time: Decimal
+    confidence: float = 1.0
+    matched_text: Optional[str] = None
+    created_at: Optional[datetime] = None

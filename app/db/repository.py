@@ -1,6 +1,6 @@
 from typing import Optional
 from .connection import get_cursor
-from .models import Episode, TranscriptSegment
+from .models import Episode, TranscriptSegment, TimestampAnchor
 
 class EpisodeRepository:
     """Data access for episodes."""
@@ -205,3 +205,101 @@ class TranscriptRepository:
                 (f"%{words[0]}%", limit)
             )
             return [dict(row) for row in cursor.fetchall()]
+
+    def get_by_episode(self, episode_id: int) -> list[TranscriptSegment]:
+        """Get all transcript segments for an episode, ordered by index."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                """
+                SELECT * FROM transcript_segments
+                WHERE episode_id = %s
+                ORDER BY segment_index
+                """,
+                (episode_id,)
+            )
+            return [TranscriptSegment(**row) for row in cursor.fetchall()]
+
+
+class TimestampAnchorRepository:
+    """Data access for timestamp alignment anchors."""
+
+    def store_anchors(self, episode_id: int, anchors: list[TimestampAnchor]) -> int:
+        """
+        Store timestamp anchors for an episode.
+
+        Replaces any existing anchors for the episode.
+
+        Args:
+            episode_id: Database ID of the episode.
+            anchors: List of TimestampAnchor objects.
+
+        Returns:
+            Number of anchors stored.
+        """
+        if not anchors:
+            return 0
+
+        with get_cursor() as cursor:
+            # Delete existing anchors for episode
+            cursor.execute(
+                "DELETE FROM timestamp_anchors WHERE episode_id = %s",
+                (episode_id,)
+            )
+
+            # Insert new anchors
+            for anchor in anchors:
+                cursor.execute(
+                    """
+                    INSERT INTO timestamp_anchors
+                    (episode_id, patreon_time, youtube_time, confidence, matched_text)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (episode_id, str(anchor.patreon_time), str(anchor.youtube_time),
+                     anchor.confidence, anchor.matched_text)
+                )
+
+            return len(anchors)
+
+    def get_by_episode(self, episode_id: int) -> list[TimestampAnchor]:
+        """Get all timestamp anchors for an episode."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                """
+                SELECT * FROM timestamp_anchors
+                WHERE episode_id = %s
+                ORDER BY patreon_time
+                """,
+                (episode_id,)
+            )
+            return [TimestampAnchor(**row) for row in cursor.fetchall()]
+
+    def has_anchors(self, episode_id: int) -> bool:
+        """Check if an episode has timestamp anchors."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT EXISTS(SELECT 1 FROM timestamp_anchors WHERE episode_id = %s)",
+                (episode_id,)
+            )
+            return cursor.fetchone()[0]
+
+    def delete_by_episode(self, episode_id: int) -> int:
+        """Delete all anchors for an episode."""
+        with get_cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM timestamp_anchors WHERE episode_id = %s",
+                (episode_id,)
+            )
+            return cursor.rowcount
+
+    def get_episodes_without_anchors(self) -> list[int]:
+        """Get episode IDs that have YouTube URLs but no anchors."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                """
+                SELECT e.id FROM episodes e
+                LEFT JOIN timestamp_anchors ta ON e.id = ta.episode_id
+                WHERE e.youtube_url IS NOT NULL
+                AND ta.id IS NULL
+                """
+            )
+            return [row['id'] for row in cursor.fetchall()]
