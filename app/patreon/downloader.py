@@ -108,6 +108,23 @@ class AudioDownloader:
         # Handle 416 (range not satisfiable) - file already complete
         if response.status_code == 416:
             if temp_path.exists():
+                # Validate file size from Content-Range header (format: bytes */total_size)
+                content_range = response.headers.get("Content-Range", "")
+                expected_size = None
+                if content_range.startswith("bytes */"):
+                    try:
+                        expected_size = int(content_range.split("/")[1])
+                    except (ValueError, IndexError):
+                        pass
+
+                temp_size = temp_path.stat().st_size
+                if expected_size is not None and temp_size != expected_size:
+                    # File is corrupted or incomplete, delete and retry
+                    temp_path.unlink()
+                    raise Exception(
+                        f"File size mismatch: expected {expected_size}, got {temp_size}"
+                    )
+
                 temp_path.rename(file_path)
                 return DownloadResult(
                     success=True,
