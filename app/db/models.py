@@ -12,6 +12,7 @@ class Episode:
     published_at: Optional[datetime] = None
     duration_seconds: Optional[int] = None
     youtube_url: Optional[str] = None
+    youtube_id: Optional[str] = None
     is_free: bool = False
     processed: bool = False
     created_at: Optional[datetime] = None
