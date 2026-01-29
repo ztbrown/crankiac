@@ -310,38 +310,6 @@ h1 {
     font-family: "SF Mono", Monaco, monospace;
 }
 
-.yt-badge {
-    font-size: 11px;
-    font-weight: 700;
-    color: #fff;
-    background: #c00;
-    padding: 2px 5px;
-    border-radius: 3px;
-    letter-spacing: 0.5px;
-}
-
-/* Match type badges */
-.match-badge {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 3px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-.match-badge.exact {
-    color: #0a5d0a;
-    background: #d4edda;
-    border: 1px solid #c3e6cb;
-}
-
-.match-badge.fuzzy {
-    color: #856404;
-    background: #fff3cd;
-    border: 1px solid #ffeeba;
-}
-
 /* Fuzzy checkbox filter group */
 .filter-group-checkbox {
     flex-direction: row;
@@ -686,13 +654,6 @@ h1 {
         order: 1;
     }
 
-    .yt-badge {
-        order: 2;
-    }
-
-    .match-badge {
-        order: 3;
-    }
 
     .audio-btn {
         order: 4;
@@ -795,12 +756,6 @@ h1 {
     .timestamp {
         font-size: 12px;
         padding: 2px 5px;
-    }
-
-    .yt-badge,
-    .match-badge {
-        font-size: 9px;
-        padding: 2px 4px;
     }
 
     .otd-episode {
