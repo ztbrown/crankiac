@@ -54,7 +54,7 @@ def youtube_fetch(args):
 
 
 def youtube_sync(args):
-    """Sync YouTube URLs for episodes."""
+    """Sync YouTube URLs and video IDs for episodes."""
     import os
     from app.db.repository import EpisodeRepository
     from app.youtube.client import (
@@ -63,22 +63,48 @@ def youtube_sync(args):
         load_videos_from_json,
         is_free_monday_episode,
     )
+    from app.youtube.scraper import scrape_channel_videos, extract_episode_number
 
-    # Load videos from JSON file or fetch fresh
-    json_path = args.json or "app/data/youtube_videos.json"
+    # Use scraper if --channel-url is provided, otherwise use existing behavior
+    if args.channel_url:
+        print(f"Scraping YouTube channel: {args.channel_url}...")
+        try:
+            scraped_videos = scrape_channel_videos(args.channel_url)
+            print(f"  Found {len(scraped_videos)} videos")
+        except ValueError as e:
+            print(f"Error: {e}")
+            return
+        except Exception as e:
+            print(f"Error scraping channel: {e}")
+            return
 
-    if args.fetch or not os.path.exists(json_path):
-        print("Fetching YouTube videos...")
-        yt_client = YouTubeClient()
-        if yt_client.api_key:
-            videos = yt_client.get_videos_with_duration(max_results=500)
-        else:
-            videos = yt_client.get_videos(max_results=100)
-        print(f"  Fetched {len(videos)} videos")
+        # Convert scraped videos to client format for compatibility
+        from app.youtube.client import YouTubeVideo
+        videos = [
+            YouTubeVideo(
+                video_id=v.video_id,
+                title=v.title,
+                published_at=v.published_at,
+                url=f"https://www.youtube.com/watch?v={v.video_id}",
+            )
+            for v in scraped_videos
+        ]
     else:
-        print(f"Loading YouTube videos from {json_path}...")
-        videos = load_videos_from_json(json_path)
-        print(f"  Loaded {len(videos)} videos")
+        # Load videos from JSON file or fetch fresh
+        json_path = args.json or "app/data/youtube_videos.json"
+
+        if args.fetch or not os.path.exists(json_path):
+            print("Fetching YouTube videos...")
+            yt_client = YouTubeClient()
+            if yt_client.api_key:
+                videos = yt_client.get_videos_with_duration(max_results=500)
+            else:
+                videos = yt_client.get_videos(max_results=100)
+            print(f"  Fetched {len(videos)} videos")
+        else:
+            print(f"Loading YouTube videos from {json_path}...")
+            videos = load_videos_from_json(json_path)
+            print(f"  Loaded {len(videos)} videos")
 
     repo = EpisodeRepository()
 
@@ -92,6 +118,7 @@ def youtube_sync(args):
     matched = 0
     ambiguous = 0
     ambiguous_matches = []
+    unmatched_count = 0
 
     for episode in episodes:
         result = match_episode_to_video_detailed(
@@ -115,19 +142,27 @@ def youtube_sync(args):
             if args.dry_run:
                 print(f"  {status_prefix}[DRY RUN] Would match (score={result.score}): {episode.title[:40]}...")
                 print(f"    -> {result.video.title[:50]}...")
+                print(f"    -> video_id: {result.video.video_id}")
                 if result.is_ambiguous and result.runner_up:
                     print(f"    Runner-up (score={result.runner_up_score}): {result.runner_up.title[:50]}...")
             else:
+                # Update youtube_url and is_free
                 repo.update_free_status(episode.id, result.video.url, is_free)
+                # Also update youtube_id
+                repo.update_youtube_id(episode.id, result.video.video_id)
                 print(f"  {status_prefix}Matched (score={result.score}): {episode.title[:40]}...")
                 print(f"    -> {result.video.url}")
                 if result.is_ambiguous and result.runner_up:
                     print(f"    Runner-up (score={result.runner_up_score}): {result.runner_up.title[:50]}...")
             matched += 1
+        else:
+            unmatched_count += 1
 
     print(f"\nResults:")
+    print(f"  Videos found: {len(videos)}")
     print(f"  Episodes checked: {len(episodes)}")
     print(f"  Matched: {matched}")
+    print(f"  Unmatched episodes: {unmatched_count}")
     print(f"  Ambiguous (needs review): {ambiguous}")
     if args.dry_run:
         print("  (Dry run - no changes made)")
@@ -342,12 +377,13 @@ def main():
     fetch_parser.add_argument("--rss-only", action="store_true", help="Use RSS feed only (no API key needed, ~15 videos)")
 
     # youtube-sync command
-    yt_parser = subparsers.add_parser("youtube-sync", help="Sync YouTube URLs for free episodes")
+    yt_parser = subparsers.add_parser("youtube-sync", help="Sync YouTube URLs and video IDs for episodes")
     yt_parser.add_argument("--all", action="store_true", help="Re-match all episodes (not just those without YouTube URLs)")
     yt_parser.add_argument("--dry-run", action="store_true", help="Show matches without updating database")
     yt_parser.add_argument("--tolerance", type=int, default=7, help="Date tolerance in days for matching (default: 7)")
     yt_parser.add_argument("--json", help="Path to YouTube videos JSON file (default: app/data/youtube_videos.json)")
     yt_parser.add_argument("--fetch", action="store_true", help="Fetch fresh videos instead of using JSON file")
+    yt_parser.add_argument("--channel-url", help="YouTube channel URL to scrape (e.g., https://www.youtube.com/@chapotraphouse)")
     yt_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed ambiguous match info for manual review")
 
     # youtube-backfill command
