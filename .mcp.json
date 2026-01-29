@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "puppeteer": {
+      "command": "npx",
+      "args": ["puppeteer-mcp-claude", "serve"],
+      "env": {
+        "PUPPETEER_HEADLESS": "true"
+      }
+    }
+  }
+}
