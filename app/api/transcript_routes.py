@@ -385,6 +385,40 @@ def get_extended_context():
                 "text": " ".join(current_words)
             })
 
+        # Get episode's youtube_url and compute embed URL with offset
+        youtube_embed_url = None
+        cursor.execute(
+            "SELECT youtube_url FROM episodes WHERE id = %s",
+            (episode_id,)
+        )
+        episode_row = cursor.fetchone()
+        if episode_row and episode_row["youtube_url"]:
+            from ..youtube.alignment import get_youtube_time
+            from ..youtube.timestamp import format_youtube_url
+
+            youtube_url = episode_row["youtube_url"]
+            # Find center segment's start time
+            center_start_time = None
+            for row in segments:
+                if row["segment_index"] == segment_index:
+                    center_start_time = float(row["start_time"])
+                    break
+
+            if center_start_time is not None:
+                # Try to get aligned YouTube time
+                youtube_time = get_youtube_time(episode_id, center_start_time)
+                if youtube_time is not None:
+                    try:
+                        youtube_embed_url = format_youtube_url(youtube_url, youtube_time, "embed")
+                    except ValueError:
+                        pass
+                else:
+                    # Fall back to using Patreon time directly (no offset)
+                    try:
+                        youtube_embed_url = format_youtube_url(youtube_url, center_start_time, "embed")
+                    except ValueError:
+                        pass
+
         return jsonify({
             "context": context,
             "episode_id": episode_id,
@@ -394,7 +428,8 @@ def get_extended_context():
             "speaker_turns": speaker_turns,
             "start_time": float(segments[0]["start_time"]),
             "end_time": float(segments[-1]["end_time"]),
-            "word_count": len(words)
+            "word_count": len(words),
+            "youtube_embed_url": youtube_embed_url,
         })
 
 
