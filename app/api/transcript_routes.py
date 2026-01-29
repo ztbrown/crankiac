@@ -178,6 +178,34 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
     num_words = len(words)
 
     with get_cursor(commit=False) as cursor:
+        # Get total count for phrase matches
+        count_query = f"""
+            WITH potential_matches AS (
+                SELECT
+                    ts.episode_id,
+                    ts.segment_index as start_index
+                FROM transcript_segments ts
+                JOIN episodes e ON ts.episode_id = e.id
+                WHERE ts.word ILIKE %s{filter_clause}
+            ),
+            verified_matches AS (
+                SELECT pm.*,
+                    (
+                        SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
+                        FROM transcript_segments ts2
+                        WHERE ts2.episode_id = pm.episode_id
+                        AND ts2.segment_index >= pm.start_index
+                        AND ts2.segment_index < pm.start_index + %s
+                    ) as matched_phrase
+                FROM potential_matches pm
+            )
+            SELECT COUNT(*) as total FROM verified_matches
+            WHERE lower(matched_phrase) LIKE lower(%s)
+        """
+        count_params = [f"%{first_word}%"] + filter_params + [num_words, f"%{' '.join(words)}%"]
+        cursor.execute(count_query, count_params)
+        total = cursor.fetchone()["total"]
+
         # Find potential matches starting with first word
         query = f"""
             WITH potential_matches AS (
@@ -241,9 +269,6 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
                 "is_free": row["is_free"],
                 "context": row["context"]
             })
-
-        # Get approximate total (expensive for phrases, so estimate)
-        total = len(results) if len(results) < limit else limit * 2
 
         return results, total
 
