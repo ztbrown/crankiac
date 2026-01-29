@@ -529,6 +529,7 @@ def search_by_speaker():
                     e.patreon_id,
                     e.published_at,
                     e.youtube_url,
+                    e.is_free,
                     (
                         SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
                         FROM transcript_segments ts2
@@ -558,6 +559,7 @@ def search_by_speaker():
                     e.patreon_id,
                     e.published_at,
                     e.youtube_url,
+                    e.is_free,
                     (
                         SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
                         FROM transcript_segments ts2
@@ -586,6 +588,7 @@ def search_by_speaker():
                 "patreon_id": row["patreon_id"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "youtube_url": row["youtube_url"],
+                "is_free": row["is_free"],
                 "context": row["context"]
             })
 

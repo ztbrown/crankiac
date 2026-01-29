@@ -114,6 +114,7 @@ def test_search_by_speaker_with_params(client):
             "patreon_id": "123",
             "published_at": None,
             "youtube_url": None,
+            "is_free": True,
             "context": "this is a test context"
         }
     ]
