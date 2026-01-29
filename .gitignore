@@ -33,9 +33,12 @@ htmlcov/
 
 # Gas Town (added by gt)
 .runtime/
-.claude/
 .beads/
 .logs/
+
+# Claude Code settings - ignore most but track skills
+.claude/*
+!.claude/skills/
 
 # Allow crew member Claude settings
 !crew/.claude/
