@@ -46,6 +46,38 @@ def test_get_connection_string_fallback():
 
 
 @pytest.mark.unit
+def test_get_connection_string_converts_postgres_to_postgresql():
+    """Test that postgres:// URLs are converted to postgresql://.
+
+    Railway provides DATABASE_URL in postgres:// format, but SQLAlchemy
+    and psycopg2 require postgresql://.
+    """
+    # Test conversion from postgres:// to postgresql://
+    postgres_url = "postgres://user:pass@host:5432/db"
+    with patch.dict(os.environ, {"DATABASE_URL": postgres_url}):
+        import importlib
+        import app.db.connection as conn_module
+        importlib.reload(conn_module)
+
+        result = conn_module.get_connection_string()
+        assert result == "postgresql://user:pass@host:5432/db"
+        assert result.startswith("postgresql://")
+
+
+@pytest.mark.unit
+def test_get_connection_string_preserves_postgresql():
+    """Test that postgresql:// URLs are not modified."""
+    postgresql_url = "postgresql://user:pass@host:5432/db"
+    with patch.dict(os.environ, {"DATABASE_URL": postgresql_url}):
+        import importlib
+        import app.db.connection as conn_module
+        importlib.reload(conn_module)
+
+        result = conn_module.get_connection_string()
+        assert result == postgresql_url
+
+
+@pytest.mark.unit
 def test_get_cursor_context_manager():
     """Test get_cursor returns a working context manager."""
     mock_conn = MagicMock()
