@@ -188,6 +188,7 @@ def test_search_with_date_filter(client):
             "patreon_id": "123",
             "published_at": datetime(2023, 6, 15),
             "youtube_url": "https://youtube.com/watch?v=123",
+            "youtube_id": "123",
             "is_free": True,
             "context": "this is a test context"
         }
@@ -225,6 +226,7 @@ def test_search_with_episode_number_filter(client):
             "patreon_id": "123",
             "published_at": datetime(2023, 6, 15),
             "youtube_url": None,
+            "youtube_id": None,
             "is_free": False,
             "context": "this is a test context"
         }
@@ -261,6 +263,7 @@ def test_search_with_content_type_free(client):
             "patreon_id": "123",
             "published_at": datetime(2023, 6, 15),
             "youtube_url": "https://youtube.com/watch?v=123",
+            "youtube_id": "123",
             "is_free": True,
             "context": "this is a test context"
         }
@@ -280,6 +283,9 @@ def test_search_with_content_type_free(client):
         assert "filters" in data
         assert data["filters"]["content_type"] == "free"
         assert data["results"][0]["is_free"] is True
+        # Verify youtube_embed_url is included when youtube_id is present
+        assert "youtube_embed_url" in data["results"][0]
+        assert data["results"][0]["youtube_embed_url"] == "https://www.youtube.com/embed/123?start=1"
 
 
 @pytest.mark.unit
@@ -298,6 +304,7 @@ def test_search_with_content_type_premium(client):
             "patreon_id": "123",
             "published_at": datetime(2023, 6, 15),
             "youtube_url": None,
+            "youtube_id": None,
             "is_free": False,
             "context": "this is a test context"
         }
@@ -317,6 +324,8 @@ def test_search_with_content_type_premium(client):
         assert "filters" in data
         assert data["filters"]["content_type"] == "premium"
         assert data["results"][0]["is_free"] is False
+        # Verify youtube_embed_url is NOT included when youtube_id is None
+        assert "youtube_embed_url" not in data["results"][0]
 
 
 @pytest.mark.unit
@@ -335,6 +344,7 @@ def test_search_with_multiple_filters(client):
             "patreon_id": "123",
             "published_at": datetime(2023, 6, 15),
             "youtube_url": "https://youtube.com/watch?v=123",
+            "youtube_id": "123",
             "is_free": True,
             "context": "this is a test context"
         }
@@ -374,6 +384,7 @@ def test_search_with_invalid_content_type_defaults_to_all(client):
             "patreon_id": "123",
             "published_at": datetime(2023, 6, 15),
             "youtube_url": None,
+            "youtube_id": None,
             "is_free": False,
             "context": "this is a test context"
         }

@@ -142,6 +142,7 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
                 e.patreon_id,
                 e.published_at,
                 e.youtube_url,
+                e.youtube_id,
                 e.is_free,
                 (
                     SELECT string_agg(ts2.word, ' ' ORDER BY ts2.segment_index)
@@ -159,7 +160,7 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
 
         results = []
         for row in cursor.fetchall():
-            results.append({
+            result = {
                 "word": row["word"],
                 "start_time": float(row["start_time"]),
                 "end_time": float(row["end_time"]),
@@ -172,7 +173,11 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
                 "youtube_url": row["youtube_url"],
                 "is_free": row["is_free"],
                 "context": row["context"]
-            })
+            }
+            if row["youtube_id"]:
+                start_seconds = int(row["start_time"])
+                result["youtube_embed_url"] = f"https://www.youtube.com/embed/{row['youtube_id']}?start={start_seconds}"
+            results.append(result)
 
         return results, total
 
@@ -205,6 +210,7 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
                     e.patreon_id,
                     e.published_at,
                     e.youtube_url,
+                    e.youtube_id,
                     e.is_free
                 FROM transcript_segments ts
                 JOIN episodes e ON ts.episode_id = e.id
@@ -243,7 +249,7 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
 
         results = []
         for row in cursor.fetchall():
-            results.append({
+            result = {
                 "phrase": row["matched_phrase"],
                 "start_time": float(row["start_time"]),
                 "end_time": float(row["end_time"]) if row["end_time"] else None,
@@ -255,7 +261,11 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
                 "youtube_url": row["youtube_url"],
                 "is_free": row["is_free"],
                 "context": row["context"]
-            })
+            }
+            if row["youtube_id"]:
+                start_seconds = int(row["start_time"])
+                result["youtube_embed_url"] = f"https://www.youtube.com/embed/{row['youtube_id']}?start={start_seconds}"
+            results.append(result)
 
         # Get approximate total (expensive for phrases, so estimate)
         total = len(results) if len(results) < limit else limit * 2
