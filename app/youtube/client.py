@@ -23,6 +23,21 @@ class YouTubeVideo:
     duration_seconds: Optional[int] = None
 
 
+@dataclass
+class MatchResult:
+    """Result of matching an episode to a YouTube video."""
+    video: Optional["YouTubeVideo"]
+    score: int
+    is_ambiguous: bool = False
+    runner_up: Optional["YouTubeVideo"] = None
+    runner_up_score: int = 0
+    match_reasons: list[str] = None
+
+    def __post_init__(self):
+        if self.match_reasons is None:
+            self.match_reasons = []
+
+
 class YouTubeClient:
     """Client for fetching videos from YouTube via RSS feed or API."""
 
@@ -278,20 +293,52 @@ def match_episode_to_video(
     Returns:
         Matched YouTubeVideo or None.
     """
+    result = match_episode_to_video_detailed(
+        episode_title, episode_date, videos, date_tolerance_days
+    )
+    return result.video
+
+
+def match_episode_to_video_detailed(
+    episode_title: str,
+    episode_date: Optional[datetime],
+    videos: list[YouTubeVideo],
+    date_tolerance_days: int = 7,
+    ambiguous_threshold: int = 10,
+) -> MatchResult:
+    """
+    Match an episode to a YouTube video with detailed results.
+
+    Args:
+        episode_title: The episode title from Patreon.
+        episode_date: When the episode was published.
+        videos: List of YouTube videos to match against.
+        date_tolerance_days: How many days apart dates can be to still match.
+        ambiguous_threshold: Score difference below which a match is ambiguous.
+
+    Returns:
+        MatchResult with match details including ambiguity detection.
+    """
     ep_normalized = normalize_title(episode_title)
     ep_number = extract_episode_number(episode_title)
 
+    # Track top two matches for ambiguity detection
     best_match = None
     best_score = 0
+    best_reasons: list[str] = []
+    runner_up = None
+    runner_up_score = 0
 
     for video in videos:
         vid_normalized = normalize_title(video.title)
         vid_number = extract_episode_number(video.title)
         score = 0
+        reasons: list[str] = []
 
         # Check episode number match (strong signal)
         if ep_number and vid_number and ep_number == vid_number:
             score += 50
+            reasons.append(f"episode_number={ep_number}")
 
         # Check title word overlap
         ep_words = set(ep_normalized.split())
@@ -301,7 +348,9 @@ def match_episode_to_video(
         stopwords = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'chapo', 'trap', 'house'}
         common_words -= stopwords
         if common_words:
-            score += len(common_words) * 10
+            word_score = len(common_words) * 10
+            score += word_score
+            reasons.append(f"title_words={','.join(sorted(common_words))}(+{word_score})")
 
         # Check date proximity
         if episode_date and video.published_at:
@@ -310,17 +359,49 @@ def match_episode_to_video(
             vid_dt = video.published_at.replace(tzinfo=None) if video.published_at.tzinfo else video.published_at
             days_diff = abs((ep_dt - vid_dt).days)
             if days_diff <= date_tolerance_days:
-                score += max(0, 20 - days_diff * 2)
+                date_score = max(0, 20 - days_diff * 2)
+                score += date_score
+                if date_score > 0:
+                    reasons.append(f"date_proximity={days_diff}d(+{date_score})")
 
         if score > best_score:
-            best_score = score
+            # Current best becomes runner up
+            runner_up = best_match
+            runner_up_score = best_score
+            # New best
             best_match = video
+            best_score = score
+            best_reasons = reasons
+        elif score > runner_up_score:
+            runner_up = video
+            runner_up_score = score
 
     # Require minimum score to return a match
-    if best_score >= 30:
-        return best_match
+    if best_score < 30:
+        return MatchResult(
+            video=None,
+            score=best_score,
+            is_ambiguous=False,
+            runner_up=runner_up,
+            runner_up_score=runner_up_score,
+            match_reasons=best_reasons,
+        )
 
-    return None
+    # Detect ambiguous matches (runner-up is close in score)
+    is_ambiguous = (
+        runner_up is not None
+        and runner_up_score >= 30
+        and (best_score - runner_up_score) < ambiguous_threshold
+    )
+
+    return MatchResult(
+        video=best_match,
+        score=best_score,
+        is_ambiguous=is_ambiguous,
+        runner_up=runner_up,
+        runner_up_score=runner_up_score,
+        match_reasons=best_reasons,
+    )
 
 
 def is_free_monday_episode(video: YouTubeVideo) -> bool:
