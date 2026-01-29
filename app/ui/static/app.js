@@ -24,7 +24,7 @@ function buildSearchUrl(query) {
     for (const [key, value] of Object.entries(filters)) {
         params.append(key, value);
     }
-    // Fuzzy search is always enabled
+    // Fuzzy search is always enabled for better typo tolerance
     params.append("fuzzy", "true");
     return `/api/transcripts/search?${params.toString()}`;
 }
