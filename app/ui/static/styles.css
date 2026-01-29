@@ -555,9 +555,9 @@ h1 {
     overflow-y: auto;
 }
 
-/* Expanded YouTube embed in expanded view */
+/* Expanded YouTube embed in expanded view (appears below context) */
 .expanded-youtube-embed {
-    margin-bottom: 12px;
+    margin-top: 12px;
     border-radius: 8px;
     overflow: hidden;
     background: #000;
