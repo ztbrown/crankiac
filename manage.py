@@ -20,11 +20,12 @@ def process(args):
     )
 
     process_limit = None if args.all else args.limit
-    print(f"Running pipeline (sync={not args.no_sync}, limit={'all' if args.all else args.limit}, cleanup={not args.no_cleanup})...")
+    print(f"Running pipeline (sync={not args.no_sync}, limit={'all' if args.all else args.limit}, offset={args.offset}, cleanup={not args.no_cleanup})...")
     results = pipeline.run(
         sync=not args.no_sync,
         max_sync=args.max_sync,
-        process_limit=process_limit
+        process_limit=process_limit,
+        offset=args.offset
     )
 
     print(f"\nResults:")
@@ -89,6 +90,7 @@ def main():
     process_parser.add_argument("--no-sync", action="store_true", help="Skip syncing from Patreon")
     process_parser.add_argument("--max-sync", type=int, default=100, help="Max episodes to sync")
     process_parser.add_argument("--limit", type=int, default=10, help="Max episodes to process")
+    process_parser.add_argument("--offset", type=int, default=0, help="Number of episodes to skip before processing")
     process_parser.add_argument("--all", action="store_true", help="Process all unprocessed episodes (overrides --limit)")
     process_parser.add_argument("--model", default="base", help="Whisper model (tiny/base/small/medium/large)")
     process_parser.add_argument("--no-cleanup", action="store_true", help="Keep audio files after transcription")

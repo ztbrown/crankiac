@@ -175,18 +175,22 @@ class EpisodePipeline:
         except OSError as e:
             logger.warning(f"  Failed to clean up audio file: {e}")
 
-    def process_unprocessed(self, limit: Optional[int] = 10) -> dict:
+    def process_unprocessed(self, limit: Optional[int] = 10, offset: int = 0) -> dict:
         """
         Process all unprocessed episodes.
 
         Args:
             limit: Maximum episodes to process in one run. None for no limit.
+            offset: Number of episodes to skip before processing.
 
         Returns:
             Dict with processing statistics.
         """
         all_unprocessed = self.episode_repo.get_unprocessed()
-        episodes = all_unprocessed if limit is None else all_unprocessed[:limit]
+        if limit is None:
+            episodes = all_unprocessed[offset:]
+        else:
+            episodes = all_unprocessed[offset:offset + limit]
         total = len(episodes)
         logger.info(f"Found {len(all_unprocessed)} unprocessed episodes, processing {total}")
 
@@ -204,7 +208,7 @@ class EpisodePipeline:
 
         return stats
 
-    def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10) -> dict:
+    def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10, offset: int = 0) -> dict:
         """
         Run the full pipeline.
 
@@ -212,6 +216,7 @@ class EpisodePipeline:
             sync: Whether to sync episodes from Patreon first.
             max_sync: Max episodes to sync.
             process_limit: Max episodes to process. None for no limit.
+            offset: Number of episodes to skip before processing.
 
         Returns:
             Dict with pipeline statistics.
@@ -222,7 +227,7 @@ class EpisodePipeline:
             episodes = self.sync_episodes(max_sync)
             results["synced"] = len(episodes)
 
-        process_stats = self.process_unprocessed(process_limit)
+        process_stats = self.process_unprocessed(process_limit, offset)
         results["processed"] = process_stats
 
         return results
