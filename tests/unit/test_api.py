@@ -354,3 +354,72 @@ def test_search_with_invalid_content_type_defaults_to_all(client):
         assert "results" in data
         # Invalid content_type should be excluded from filters
         assert "content_type" not in data.get("filters", {})
+
+
+@pytest.mark.unit
+def test_map_speaker_to_name_known_speakers():
+    """Test mapping SPEAKER_XX to known host names."""
+    from app.api.transcript_routes import map_speaker_to_name
+
+    assert map_speaker_to_name("SPEAKER_00") == "Matt"
+    assert map_speaker_to_name("SPEAKER_01") == "Will"
+    assert map_speaker_to_name("SPEAKER_02") == "Felix"
+    assert map_speaker_to_name("SPEAKER_03") == "Amber"
+    assert map_speaker_to_name("SPEAKER_04") == "Virgil"
+
+
+@pytest.mark.unit
+def test_map_speaker_to_name_unknown_speaker():
+    """Test that speakers beyond known list keep original ID."""
+    from app.api.transcript_routes import map_speaker_to_name
+
+    assert map_speaker_to_name("SPEAKER_05") == "SPEAKER_05"
+    assert map_speaker_to_name("SPEAKER_99") == "SPEAKER_99"
+
+
+@pytest.mark.unit
+def test_map_speaker_to_name_non_speaker_format():
+    """Test that non-SPEAKER_XX formats are preserved."""
+    from app.api.transcript_routes import map_speaker_to_name
+
+    assert map_speaker_to_name("Guest") == "Guest"
+    assert map_speaker_to_name("Unknown") == "Unknown"
+    assert map_speaker_to_name("speaker_00") == "speaker_00"  # lowercase not matched
+
+
+@pytest.mark.unit
+def test_map_speaker_to_name_none():
+    """Test that None input returns None."""
+    from app.api.transcript_routes import map_speaker_to_name
+
+    assert map_speaker_to_name(None) is None
+
+
+@pytest.mark.unit
+def test_context_endpoint_maps_speakers(client):
+    """Test context endpoint maps speaker IDs to known names."""
+    mock_rows = [
+        {"word": "hello", "segment_index": 9, "start_time": 1.0, "end_time": 1.5, "speaker": "SPEAKER_00"},
+        {"word": "there", "segment_index": 10, "start_time": 1.5, "end_time": 2.0, "speaker": "SPEAKER_00"},
+        {"word": "hi", "segment_index": 11, "start_time": 2.0, "end_time": 2.5, "speaker": "SPEAKER_01"},
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/context?episode_id=1&segment_index=10")
+        assert response.status_code == 200
+        data = response.json
+
+        # center_speaker should be mapped
+        assert data["center_speaker"] == "Matt"
+
+        # speaker_turns should have mapped names
+        assert len(data["speaker_turns"]) == 2
+        assert data["speaker_turns"][0]["speaker"] == "Matt"
+        assert data["speaker_turns"][0]["text"] == "hello there"
+        assert data["speaker_turns"][1]["speaker"] == "Will"
+        assert data["speaker_turns"][1]["text"] == "hi"
