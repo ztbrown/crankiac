@@ -325,11 +325,13 @@ async function handleExpandClick(event) {
     const segmentIndex = btn.dataset.segmentIndex;
     const query = resultsContainer.dataset.query;
 
+    // Get the original result to access youtube_embed_url
+    const resultIndex = parseInt(resultItem.dataset.resultIndex);
+    const originalItem = window.currentResults[resultIndex];
+
     // Check if already expanded
     if (resultItem.classList.contains("expanded")) {
         // Collapse: restore original context
-        const resultIndex = parseInt(resultItem.dataset.resultIndex);
-        const originalItem = window.currentResults[resultIndex];
         contextContainer.innerHTML = `<p class="context">${highlightMatch(originalItem.context || originalItem.word, query)}</p>`;
         resultItem.classList.remove("expanded");
         btn.querySelector(".expand-icon").textContent = "⋯";
@@ -352,8 +354,35 @@ async function handleExpandClick(event) {
 
         const data = await response.json();
 
-        // Display expanded context
-        contextContainer.innerHTML = `<p class="context expanded-context">${highlightMatch(data.context, query)}</p>`;
+        // Build the expanded content
+        let expandedHtml = '';
+
+        // Add YouTube embed if this is a free episode with youtube_url
+        if (originalItem.youtube_url) {
+            const videoId = extractYoutubeVideoId(originalItem.youtube_url);
+            if (videoId) {
+                const embedUrl = getYoutubeEmbedUrl(videoId, originalItem.start_time);
+                expandedHtml += `
+                    <div class="expanded-youtube-embed">
+                        <iframe
+                            src="${embedUrl}"
+                            frameborder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                `;
+            }
+        }
+
+        // Format context with speaker labels if available
+        if (data.speaker_turns && data.speaker_turns.length > 0) {
+            expandedHtml += formatSpeakerTurns(data.speaker_turns, query);
+        } else {
+            expandedHtml += `<p class="context expanded-context">${highlightMatch(data.context, query)}</p>`;
+        }
+
+        contextContainer.innerHTML = expandedHtml;
         resultItem.classList.add("expanded");
         btn.querySelector(".expand-icon").textContent = "−";
         btn.title = "Show less context";
@@ -363,6 +392,21 @@ async function handleExpandClick(event) {
     } finally {
         btn.disabled = false;
     }
+}
+
+function formatSpeakerTurns(speakerTurns, query) {
+    const turnsHtml = speakerTurns.map(turn => {
+        const speaker = turn.speaker || 'Unknown';
+        const text = highlightMatch(turn.text, query);
+        return `
+            <div class="speaker-turn">
+                <span class="speaker-label">${escapeHtml(speaker)}:</span>
+                <span class="speaker-text">${text}</span>
+            </div>
+        `;
+    }).join('');
+
+    return `<div class="expanded-context speaker-turns">${turnsHtml}</div>`;
 }
 
 function highlightMatch(text, query) {
