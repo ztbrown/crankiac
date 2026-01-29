@@ -19,6 +19,15 @@ def search_transcripts():
 
     Returns:
         JSON with matches including episode info and timestamps.
+        Each result includes:
+            - word/phrase: The matched text
+            - start_time, end_time: Timestamps in seconds
+            - segment_index: Position in transcript
+            - episode_id, episode_title, patreon_id: Episode identifiers
+            - published_at: Publication date (ISO format)
+            - youtube_url: YouTube video URL (null if not available)
+            - is_free: Boolean indicating if episode is free content
+            - context: Surrounding words for context
     """
     query = request.args.get("q", "").strip()
     try:

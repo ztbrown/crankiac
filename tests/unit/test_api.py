@@ -373,6 +373,86 @@ def test_search_with_invalid_content_type_defaults_to_all(client):
 
 
 @pytest.mark.unit
+def test_search_results_include_youtube_url_and_is_free(client):
+    """Test search results include youtube_url and is_free fields."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "test",
+            "start_time": 1.5,
+            "end_time": 2.0,
+            "segment_index": 10,
+            "speaker": "SPEAKER_01",
+            "episode_id": 1,
+            "episode_title": "0001 - Test Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2023, 6, 15),
+            "youtube_url": "https://youtube.com/watch?v=abc123",
+            "is_free": True,
+            "context": "this is a test context"
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=test")
+        assert response.status_code == 200
+        data = response.json
+        assert "results" in data
+        assert len(data["results"]) == 1
+        result = data["results"][0]
+        assert "youtube_url" in result
+        assert result["youtube_url"] == "https://youtube.com/watch?v=abc123"
+        assert "is_free" in result
+        assert result["is_free"] is True
+
+
+@pytest.mark.unit
+def test_search_results_youtube_url_can_be_null(client):
+    """Test search results handle null youtube_url correctly."""
+    from datetime import datetime
+    mock_rows = [
+        {
+            "word": "test",
+            "start_time": 1.5,
+            "end_time": 2.0,
+            "segment_index": 10,
+            "speaker": "SPEAKER_01",
+            "episode_id": 1,
+            "episode_title": "0001 - Premium Episode",
+            "patreon_id": "123",
+            "published_at": datetime(2023, 6, 15),
+            "youtube_url": None,
+            "is_free": False,
+            "context": "this is a test context"
+        }
+    ]
+
+    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+        mock_ctx = MagicMock()
+        mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ctx.fetchone.return_value = {"total": 1}
+        mock_ctx.fetchall.return_value = mock_rows
+
+        response = client.get("/api/transcripts/search?q=test")
+        assert response.status_code == 200
+        data = response.json
+        assert "results" in data
+        assert len(data["results"]) == 1
+        result = data["results"][0]
+        assert "youtube_url" in result
+        assert result["youtube_url"] is None
+        assert "is_free" in result
+        assert result["is_free"] is False
+
+
+@pytest.mark.unit
 def test_list_episodes_invalid_limit_returns_400(client):
     """Test that invalid limit parameter returns 400 instead of raising ValueError."""
     response = client.get("/api/transcripts/episodes?limit=abc")
