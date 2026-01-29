@@ -1,0 +1,7 @@
+{
+  "_note": "MCP servers inherited from project root .mcp.json",
+  "permissions": {
+    "allow": [],
+    "deny": []
+  }
+}

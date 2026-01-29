@@ -36,3 +36,7 @@ htmlcov/
 .claude/
 .beads/
 .logs/
+
+# Allow crew member Claude settings
+!crew/.claude/
+!crew/**/.claude/
