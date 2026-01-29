@@ -382,6 +382,11 @@ async function handleExpandClick(event) {
             }
         }
 
+        // Ensure we have content to display
+        if (!expandedHtml) {
+            expandedHtml = `<p class="context expanded-context">No additional context available.</p>`;
+        }
+
         contextContainer.innerHTML = expandedHtml;
         resultItem.classList.add("expanded");
         btn.querySelector(".expand-icon").textContent = "−";
@@ -410,7 +415,9 @@ function formatSpeakerTurns(speakerTurns, query) {
 }
 
 function highlightMatch(text, query) {
+    if (!text) return '';
     const escaped = escapeHtml(text);
+    if (!query) return escaped;
     const regex = new RegExp(`(${escapeRegex(query)})`, "gi");
     return escaped.replace(regex, '<mark>$1</mark>');
 }
