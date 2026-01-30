@@ -41,7 +41,7 @@ jobs:
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --detach --service stellar-victory
+        run: railway up --detach --service 52a480ed-3eba-4c20-bac9-fddda6f16421
 
       - name: Verify health
         run: |
