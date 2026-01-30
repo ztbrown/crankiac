@@ -1,6 +1,9 @@
 [build]
 builder = "nixpacks"
 
+[build.nixpacksPlan.phases.install]
+cmds = ["python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements-prod.txt"]
+
 [deploy]
 startCommand = "python run.py"
 healthcheckPath = "/health"
