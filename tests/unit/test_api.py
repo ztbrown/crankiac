@@ -172,7 +172,7 @@ def test_search_with_date_filter(client):
     ]
 
     with patch("app.api.transcript_routes.get_cursor") as mock_cursor, \
-         patch("app.api.transcript_routes.get_youtube_time", return_value=10.0):
+         patch("app.youtube.alignment.get_youtube_time", return_value=10.0):
         mock_ctx = MagicMock()
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -246,7 +246,7 @@ def test_search_with_content_type_free(client):
     ]
 
     with patch("app.api.transcript_routes.get_cursor") as mock_cursor, \
-         patch("app.api.transcript_routes.get_youtube_time", return_value=10.0):
+         patch("app.youtube.alignment.get_youtube_time", return_value=10.0):
         mock_ctx = MagicMock()
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -321,7 +321,7 @@ def test_search_with_multiple_filters(client):
     ]
 
     with patch("app.api.transcript_routes.get_cursor") as mock_cursor, \
-         patch("app.api.transcript_routes.get_youtube_time", return_value=10.0):
+         patch("app.youtube.alignment.get_youtube_time", return_value=10.0):
         mock_ctx = MagicMock()
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -397,7 +397,7 @@ def test_search_results_include_youtube_url_and_is_free(client):
     ]
 
     with patch("app.api.transcript_routes.get_cursor") as mock_cursor, \
-         patch("app.api.transcript_routes.get_youtube_time", return_value=10.0):
+         patch("app.youtube.alignment.get_youtube_time", return_value=10.0):
         mock_ctx = MagicMock()
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
