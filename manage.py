@@ -18,7 +18,9 @@ def process(args):
 
     pipeline = EpisodePipeline(
         whisper_model=args.model,
-        cleanup_audio=not args.no_cleanup
+        cleanup_audio=not args.no_cleanup,
+        enable_diarization=args.diarize,
+        num_speakers=args.num_speakers
     )
 
     # Handle single episode processing by ID
@@ -471,6 +473,9 @@ def main():
     # Processing options
     process_parser.add_argument("--model", default="base", help="Whisper model (tiny/base/small/medium/large)")
     process_parser.add_argument("--no-cleanup", action="store_true", help="Keep audio files after transcription")
+    # Diarization options
+    process_parser.add_argument("--diarize", action="store_true", help="Enable speaker diarization")
+    process_parser.add_argument("--num-speakers", type=int, default=None, help="Hint for number of speakers (optional)")
 
     # youtube-fetch command
     fetch_parser = subparsers.add_parser("youtube-fetch", help="Fetch YouTube videos and save to JSON")
