@@ -1,3 +1,4 @@
+import os
 from flask import Flask
 from flask_cors import CORS
 from app.api.routes import api
@@ -7,6 +8,14 @@ from app.data.database import init_db
 from app.config import Config
 
 def create_app():
+    # Debug: log DATABASE_URL on startup
+    db_url = os.environ.get("DATABASE_URL", "NOT SET")
+    # Mask password for security
+    if "@" in db_url:
+        masked = db_url.split("@")[0][:20] + "...@" + db_url.split("@")[1]
+    else:
+        masked = db_url
+    print(f"[STARTUP] DATABASE_URL = {masked}")
     """Application factory."""
     app = Flask(__name__, static_folder="../ui/static", static_url_path="/static")
     CORS(app, origins=Config.get_cors_origins())
