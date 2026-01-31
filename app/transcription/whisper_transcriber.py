@@ -21,15 +21,18 @@ class TranscriptResult:
 class WhisperTranscriber:
     """Transcribes audio files using OpenAI Whisper with word-level timestamps."""
 
-    def __init__(self, model_name: str = "base"):
+    def __init__(self, model_name: str = "base", initial_prompt: str = None):
         """
         Initialize the transcriber.
 
         Args:
             model_name: Whisper model size. Options: tiny, base, small, medium, large.
                        Larger models are more accurate but slower.
+            initial_prompt: Optional text to provide context for transcription.
+                           Useful for improving accuracy of proper nouns and vocabulary.
         """
         self.model_name = model_name
+        self.initial_prompt = initial_prompt
         self._model = None
 
     @property
@@ -39,17 +42,12 @@ class WhisperTranscriber:
             self._model = whisper.load_model(self.model_name)
         return self._model
 
-    def transcribe(
-        self,
-        audio_path: str,
-        vocabulary_hints: Optional[list[str]] = None
-    ) -> TranscriptResult:
+    def transcribe(self, audio_path: str) -> TranscriptResult:
         """
         Transcribe an audio file with word-level timestamps.
 
         Args:
             audio_path: Path to the audio file.
-            vocabulary_hints: Optional list of names/terms to bias recognition toward.
 
         Returns:
             TranscriptResult with word segments and metadata.
@@ -57,19 +55,13 @@ class WhisperTranscriber:
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-        # Build transcribe kwargs
-        transcribe_kwargs = {
-            "word_timestamps": True,
-            "verbose": False,
-        }
-
-        # Add initial_prompt if vocabulary hints provided
-        if vocabulary_hints:
-            initial_prompt = "Names mentioned: " + ", ".join(vocabulary_hints) + "."
-            transcribe_kwargs["initial_prompt"] = initial_prompt
-
         # Transcribe with word timestamps
-        result = self.model.transcribe(audio_path, **transcribe_kwargs)
+        result = self.model.transcribe(
+            audio_path,
+            word_timestamps=True,
+            initial_prompt=self.initial_prompt,
+            verbose=False
+        )
 
         segments = []
         segment_index = 0
@@ -117,15 +109,20 @@ class WhisperTranscriber:
         return self.transcribe(audio_path)
 
 
-def get_transcriber(model_name: Optional[str] = None) -> WhisperTranscriber:
+def get_transcriber(
+    model_name: Optional[str] = None,
+    initial_prompt: Optional[str] = None
+) -> WhisperTranscriber:
     """
     Factory function to get a transcriber instance.
 
     Args:
         model_name: Whisper model name. Defaults to WHISPER_MODEL env var or "base".
+        initial_prompt: Optional text to provide context for transcription.
+                       Useful for improving accuracy of proper nouns and vocabulary.
 
     Returns:
         Configured WhisperTranscriber instance.
     """
     model = model_name or os.environ.get("WHISPER_MODEL", "base")
-    return WhisperTranscriber(model_name=model)
+    return WhisperTranscriber(model_name=model, initial_prompt=initial_prompt)
