@@ -52,12 +52,15 @@ class EpisodePipeline:
         self.enable_diarization = enable_diarization
         self.patreon = PatreonClient(self.session_id)
         self.downloader = AudioDownloader(self.session_id, download_dir)
-        self.transcriber = get_transcriber(whisper_model)
         self.storage = TranscriptStorage()
         self.episode_repo = EpisodeRepository()
 
-        # Load vocabulary hints from file
-        self.vocabulary_hints = self._load_vocabulary(vocabulary_file)
+        # Load vocabulary hints from file and build initial_prompt for Whisper
+        vocabulary_hints = self._load_vocabulary(vocabulary_file)
+        initial_prompt = None
+        if vocabulary_hints:
+            initial_prompt = "Names mentioned: " + ", ".join(vocabulary_hints) + "."
+        self.transcriber = get_transcriber(whisper_model, initial_prompt=initial_prompt)
 
         # Initialize diarizer if enabled
         self.diarizer = None
@@ -169,13 +172,7 @@ class EpisodePipeline:
 
             # Transcribe
             logger.info(f"  Transcribing...")
-            if self.vocabulary_hints:
-                transcript = self.transcriber.transcribe(
-                    download_result.file_path,
-                    vocabulary_hints=self.vocabulary_hints
-                )
-            else:
-                transcript = self.transcriber.transcribe(download_result.file_path)
+            transcript = self.transcriber.transcribe(download_result.file_path)
             logger.info(f"  Transcribed: {len(transcript.segments)} words")
 
             # Speaker diarization (optional)
