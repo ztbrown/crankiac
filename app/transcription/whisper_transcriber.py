@@ -39,12 +39,17 @@ class WhisperTranscriber:
             self._model = whisper.load_model(self.model_name)
         return self._model
 
-    def transcribe(self, audio_path: str) -> TranscriptResult:
+    def transcribe(
+        self,
+        audio_path: str,
+        vocabulary_hints: Optional[list[str]] = None
+    ) -> TranscriptResult:
         """
         Transcribe an audio file with word-level timestamps.
 
         Args:
             audio_path: Path to the audio file.
+            vocabulary_hints: Optional list of names/terms to bias recognition toward.
 
         Returns:
             TranscriptResult with word segments and metadata.
@@ -52,12 +57,19 @@ class WhisperTranscriber:
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
+        # Build transcribe kwargs
+        transcribe_kwargs = {
+            "word_timestamps": True,
+            "verbose": False,
+        }
+
+        # Add initial_prompt if vocabulary hints provided
+        if vocabulary_hints:
+            initial_prompt = "Names mentioned: " + ", ".join(vocabulary_hints) + "."
+            transcribe_kwargs["initial_prompt"] = initial_prompt
+
         # Transcribe with word timestamps
-        result = self.model.transcribe(
-            audio_path,
-            word_timestamps=True,
-            verbose=False
-        )
+        result = self.model.transcribe(audio_path, **transcribe_kwargs)
 
         segments = []
         segment_index = 0
