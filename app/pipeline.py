@@ -28,7 +28,8 @@ class EpisodePipeline:
         cleanup_audio: bool = True,
         enable_diarization: bool = False,
         hf_token: Optional[str] = None,
-        num_speakers: Optional[int] = None
+        num_speakers: Optional[int] = None,
+        vocabulary_file: Optional[str] = None
     ):
         """
         Initialize the pipeline.
@@ -41,6 +42,7 @@ class EpisodePipeline:
             enable_diarization: Whether to run speaker diarization.
             hf_token: HuggingFace token for pyannote (or from HF_TOKEN env).
             num_speakers: Expected number of speakers (optional hint).
+            vocabulary_file: Path to file with vocabulary hints (one per line).
         """
         self.session_id = session_id or os.environ.get("PATREON_SESSION_ID")
         if not self.session_id:
@@ -54,6 +56,9 @@ class EpisodePipeline:
         self.storage = TranscriptStorage()
         self.episode_repo = EpisodeRepository()
 
+        # Load vocabulary hints from file
+        self.vocabulary_hints = self._load_vocabulary(vocabulary_file)
+
         # Initialize diarizer if enabled
         self.diarizer = None
         if enable_diarization:
@@ -62,6 +67,35 @@ class EpisodePipeline:
                 logger.info("Speaker diarization enabled")
             except Exception as e:
                 logger.warning(f"Could not initialize diarizer: {e}. Diarization disabled.")
+
+    def _load_vocabulary(self, vocabulary_file: Optional[str]) -> list[str]:
+        """Load vocabulary hints from file.
+
+        Args:
+            vocabulary_file: Path to file with vocabulary hints (one per line).
+
+        Returns:
+            List of vocabulary hints, or empty list if file not provided/found.
+        """
+        if not vocabulary_file:
+            return []
+
+        path = Path(vocabulary_file)
+        if not path.exists():
+            logger.warning(f"Vocabulary file not found: {vocabulary_file}")
+            return []
+
+        try:
+            hints = []
+            for line in path.read_text().splitlines():
+                line = line.strip()
+                if line:
+                    hints.append(line)
+            logger.info(f"Loaded {len(hints)} vocabulary hints from {vocabulary_file}")
+            return hints
+        except Exception as e:
+            logger.warning(f"Failed to load vocabulary file: {e}")
+            return []
 
     def sync_episodes(self, max_episodes: int = 100) -> list[Episode]:
         """
@@ -135,7 +169,13 @@ class EpisodePipeline:
 
             # Transcribe
             logger.info(f"  Transcribing...")
-            transcript = self.transcriber.transcribe(download_result.file_path)
+            if self.vocabulary_hints:
+                transcript = self.transcriber.transcribe(
+                    download_result.file_path,
+                    vocabulary_hints=self.vocabulary_hints
+                )
+            else:
+                transcript = self.transcriber.transcribe(download_result.file_path)
             logger.info(f"  Transcribed: {len(transcript.segments)} words")
 
             # Speaker diarization (optional)

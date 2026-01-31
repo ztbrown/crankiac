@@ -330,3 +330,114 @@ def test_run_with_numbered_only(pipeline):
     results = pipeline.run(sync=False, process_limit=10, numbered_only=True)
 
     pipeline.episode_repo.get_unprocessed.assert_called_once_with(numbered_only=True)
+
+
+# Tests for vocabulary_file feature
+
+@pytest.fixture
+def pipeline_with_vocabulary(tmp_path):
+    """Create a pipeline with a vocabulary file."""
+    vocab_file = tmp_path / "vocabulary.txt"
+    vocab_file.write_text("Will Menaker\nMatt Christman\nFelix Biederman\n")
+
+    with patch("app.pipeline.PatreonClient"), \
+         patch("app.pipeline.AudioDownloader"), \
+         patch("app.pipeline.get_transcriber"), \
+         patch("app.pipeline.TranscriptStorage"), \
+         patch("app.pipeline.EpisodeRepository"):
+        p = EpisodePipeline(session_id="test-session", vocabulary_file=str(vocab_file))
+        yield p
+
+
+@pytest.mark.unit
+def test_pipeline_accepts_vocabulary_file_parameter(tmp_path):
+    """Test that EpisodePipeline accepts vocabulary_file parameter."""
+    vocab_file = tmp_path / "vocab.txt"
+    vocab_file.write_text("Name One\nName Two\n")
+
+    with patch("app.pipeline.PatreonClient"), \
+         patch("app.pipeline.AudioDownloader"), \
+         patch("app.pipeline.get_transcriber"), \
+         patch("app.pipeline.TranscriptStorage"), \
+         patch("app.pipeline.EpisodeRepository"):
+        # Should not raise
+        p = EpisodePipeline(session_id="test-session", vocabulary_file=str(vocab_file))
+        assert p.vocabulary_hints == ["Name One", "Name Two"]
+
+
+@pytest.mark.unit
+def test_pipeline_loads_vocabulary_from_file(tmp_path):
+    """Test that vocabulary is loaded from file correctly."""
+    vocab_file = tmp_path / "vocab.txt"
+    vocab_file.write_text("Will Menaker\nMatt Christman\nFelix Biederman\n")
+
+    with patch("app.pipeline.PatreonClient"), \
+         patch("app.pipeline.AudioDownloader"), \
+         patch("app.pipeline.get_transcriber"), \
+         patch("app.pipeline.TranscriptStorage"), \
+         patch("app.pipeline.EpisodeRepository"):
+        p = EpisodePipeline(session_id="test-session", vocabulary_file=str(vocab_file))
+        assert p.vocabulary_hints == ["Will Menaker", "Matt Christman", "Felix Biederman"]
+
+
+@pytest.mark.unit
+def test_pipeline_passes_vocabulary_hints_to_transcriber(pipeline_with_vocabulary):
+    """Test that vocabulary_hints are passed to transcriber.transcribe()."""
+    episode = make_episode()
+    pipeline_with_vocabulary.downloader.download.return_value = DownloadResult(
+        success=True, file_path="/tmp/test.mp3", file_size=1000
+    )
+    pipeline_with_vocabulary.transcriber.transcribe.return_value = make_transcript_result()
+    pipeline_with_vocabulary.storage.store_transcript.return_value = 3
+
+    pipeline_with_vocabulary.process_episode(episode)
+
+    # Verify transcribe was called with vocabulary_hints
+    pipeline_with_vocabulary.transcriber.transcribe.assert_called_once_with(
+        "/tmp/test.mp3",
+        vocabulary_hints=["Will Menaker", "Matt Christman", "Felix Biederman"]
+    )
+
+
+@pytest.mark.unit
+def test_pipeline_no_vocabulary_hints_when_no_file(pipeline):
+    """Test that transcriber is called without vocabulary_hints when no file provided."""
+    episode = make_episode()
+    pipeline.downloader.download.return_value = DownloadResult(
+        success=True, file_path="/tmp/test.mp3", file_size=1000
+    )
+    pipeline.transcriber.transcribe.return_value = make_transcript_result()
+    pipeline.storage.store_transcript.return_value = 3
+
+    pipeline.process_episode(episode)
+
+    # Verify transcribe was called without vocabulary_hints
+    pipeline.transcriber.transcribe.assert_called_once_with("/tmp/test.mp3")
+
+
+@pytest.mark.unit
+def test_pipeline_handles_missing_vocabulary_file():
+    """Test that missing vocabulary file logs warning but doesn't fail."""
+    with patch("app.pipeline.PatreonClient"), \
+         patch("app.pipeline.AudioDownloader"), \
+         patch("app.pipeline.get_transcriber"), \
+         patch("app.pipeline.TranscriptStorage"), \
+         patch("app.pipeline.EpisodeRepository"):
+        # Should not raise, but vocabulary_hints should be empty
+        p = EpisodePipeline(session_id="test-session", vocabulary_file="/nonexistent/vocab.txt")
+        assert p.vocabulary_hints == []
+
+
+@pytest.mark.unit
+def test_pipeline_skips_empty_lines_in_vocabulary(tmp_path):
+    """Test that empty lines in vocabulary file are skipped."""
+    vocab_file = tmp_path / "vocab.txt"
+    vocab_file.write_text("Name One\n\nName Two\n  \nName Three\n")
+
+    with patch("app.pipeline.PatreonClient"), \
+         patch("app.pipeline.AudioDownloader"), \
+         patch("app.pipeline.get_transcriber"), \
+         patch("app.pipeline.TranscriptStorage"), \
+         patch("app.pipeline.EpisodeRepository"):
+        p = EpisodePipeline(session_id="test-session", vocabulary_file=str(vocab_file))
+        assert p.vocabulary_hints == ["Name One", "Name Two", "Name Three"]
