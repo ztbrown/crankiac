@@ -176,17 +176,17 @@ class TestFormatYoutubeUrl:
     def test_embed_format_basic(self):
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         result = format_youtube_url(url, 123, format_type="embed")
-        assert result == "https://www.youtube.com/embed/dQw4w9WgXcQ?start=123"
+        assert result == "https://www.youtube.com/embed/dQw4w9WgXcQ?start=123&autoplay=1"
 
     def test_embed_format_from_short_url(self):
         url = "https://youtu.be/dQw4w9WgXcQ"
         result = format_youtube_url(url, 60, format_type="embed")
-        assert result == "https://www.youtube.com/embed/dQw4w9WgXcQ?start=60"
+        assert result == "https://www.youtube.com/embed/dQw4w9WgXcQ?start=60&autoplay=1"
 
     def test_embed_format_zero_seconds(self):
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         result = format_youtube_url(url, 0, format_type="embed")
-        assert result == "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0"
+        assert result == "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&autoplay=1"
 
     def test_decimal_start_time(self):
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
