@@ -152,6 +152,38 @@ class EpisodeRepository:
             )
             return cursor.rowcount
 
+    def get_by_episode_numbers(self, numbers: list[int]) -> list[Episode]:
+        """Get episodes by their episode numbers.
+
+        Episodes have titles like "1003 - Bored of Peace feat. Derek Davison".
+        This method finds episodes where the title starts with the given number pattern.
+
+        Args:
+            numbers: List of episode numbers to find.
+
+        Returns:
+            List of Episode objects matching the given numbers.
+        """
+        if not numbers:
+            return []
+
+        with get_cursor(commit=False) as cursor:
+            # Build OR conditions for each episode number pattern
+            conditions = []
+            params = []
+            for num in numbers:
+                conditions.append("title LIKE %s")
+                params.append(f"{num} -%")
+
+            query = f"""
+                SELECT * FROM episodes
+                WHERE {" OR ".join(conditions)}
+                ORDER BY published_at DESC
+            """
+            cursor.execute(query, tuple(params))
+            return [Episode(**row) for row in cursor.fetchall()]
+
+
 class TranscriptRepository:
     """Data access for transcript segments."""
 

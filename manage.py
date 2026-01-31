@@ -18,7 +18,10 @@ def process(args):
 
     pipeline = EpisodePipeline(
         whisper_model=args.model,
-        cleanup_audio=not args.no_cleanup
+        cleanup_audio=not args.no_cleanup,
+        enable_diarization=args.diarize,
+        num_speakers=args.num_speakers,
+        vocabulary_file=args.vocab
     )
 
     # Handle single episode processing by ID
@@ -59,6 +62,38 @@ def process(args):
         else:
             print("Episode processing failed.")
             sys.exit(1)
+        return
+
+    # Handle --episodes flag: process specific episodes by their episode number
+    if args.episodes:
+        episode_numbers = [int(n.strip()) for n in args.episodes.split(",")]
+        repo = EpisodeRepository()
+        episodes = repo.get_by_episode_numbers(episode_numbers)
+
+        if not episodes:
+            print(f"No episodes found matching: {args.episodes}")
+            sys.exit(1)
+
+        print(f"Processing {len(episodes)} specific episodes: {args.episodes}")
+        stats = {"total": len(episodes), "success": 0, "failed": 0, "skipped": 0}
+
+        for i, episode in enumerate(episodes, 1):
+            print(f"[{i}/{len(episodes)}] {episode.title}")
+            if not episode.audio_url:
+                stats["skipped"] += 1
+                continue
+            if pipeline.process_episode(episode):
+                stats["success"] += 1
+            else:
+                stats["failed"] += 1
+
+        print(f"\nResults:")
+        print(f"  Episodes synced: 0 (skipped - specific episodes requested)")
+        print(f"  Processed: {stats['success']}/{stats['total']} succeeded")
+        if stats['skipped']:
+            print(f"  Skipped (no audio): {stats['skipped']}")
+        if stats['failed']:
+            print(f"  Failed: {stats['failed']}")
         return
 
     # Batch processing mode
@@ -471,6 +506,13 @@ def main():
     # Processing options
     process_parser.add_argument("--model", default="base", help="Whisper model (tiny/base/small/medium/large)")
     process_parser.add_argument("--no-cleanup", action="store_true", help="Keep audio files after transcription")
+    # Diarization options
+    process_parser.add_argument("--diarize", action="store_true", help="Enable speaker diarization")
+    process_parser.add_argument("--num-speakers", type=int, default=None, help="Hint for number of speakers (optional)")
+    # Episode selection by number
+    process_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to process (e.g., 1003,1006)")
+    # Vocabulary hints
+    process_parser.add_argument("--vocab", metavar="PATH", help="Path to vocabulary file (names/terms, one per line)")
 
     # youtube-fetch command
     fetch_parser = subparsers.add_parser("youtube-fetch", help="Fetch YouTube videos and save to JSON")
