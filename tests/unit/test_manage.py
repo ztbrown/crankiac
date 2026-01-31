@@ -74,7 +74,9 @@ class TestProcessCommandIntegration:
                     all_shows=False,
                     include_shows=None,
                     episode=None,
-                    title=None
+                    title=None,
+                    vocab=None,
+                    episodes=None
                 )
 
                 manage.process(args)
@@ -120,7 +122,9 @@ class TestProcessCommandIntegration:
                     all_shows=False,
                     include_shows=None,
                     episode=None,
-                    title=None
+                    title=None,
+                    vocab=None,
+                    episodes=None
                 )
 
                 manage.process(args)
@@ -166,7 +170,9 @@ class TestProcessCommandIntegration:
                     all_shows=False,
                     include_shows=None,
                     episode=None,
-                    title=None
+                    title=None,
+                    vocab=None,
+                    episodes=None
                 )
 
                 manage.process(args)
