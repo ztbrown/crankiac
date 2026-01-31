@@ -28,7 +28,8 @@ class EpisodePipeline:
         cleanup_audio: bool = True,
         enable_diarization: bool = False,
         hf_token: Optional[str] = None,
-        num_speakers: Optional[int] = None
+        num_speakers: Optional[int] = None,
+        vocabulary_file: Optional[str] = None
     ):
         """
         Initialize the pipeline.
@@ -41,6 +42,7 @@ class EpisodePipeline:
             enable_diarization: Whether to run speaker diarization.
             hf_token: HuggingFace token for pyannote (or from HF_TOKEN env).
             num_speakers: Expected number of speakers (optional hint).
+            vocabulary_file: Path to file with vocabulary hints (one per line).
         """
         self.session_id = session_id or os.environ.get("PATREON_SESSION_ID")
         if not self.session_id:
@@ -54,6 +56,9 @@ class EpisodePipeline:
         self.storage = TranscriptStorage()
         self.episode_repo = EpisodeRepository()
 
+        # Load vocabulary hints from file
+        self.vocabulary_hints = self._load_vocabulary(vocabulary_file)
+
         # Initialize diarizer if enabled
         self.diarizer = None
         if enable_diarization:
@@ -62,6 +67,35 @@ class EpisodePipeline:
                 logger.info("Speaker diarization enabled")
             except Exception as e:
                 logger.warning(f"Could not initialize diarizer: {e}. Diarization disabled.")
+
+    def _load_vocabulary(self, vocabulary_file: Optional[str]) -> list[str]:
+        """Load vocabulary hints from file.
+
+        Args:
+            vocabulary_file: Path to file with vocabulary hints (one per line).
+
+        Returns:
+            List of vocabulary hints, or empty list if file not provided/found.
+        """
+        if not vocabulary_file:
+            return []
+
+        path = Path(vocabulary_file)
+        if not path.exists():
+            logger.warning(f"Vocabulary file not found: {vocabulary_file}")
+            return []
+
+        try:
+            hints = []
+            for line in path.read_text().splitlines():
+                line = line.strip()
+                if line:
+                    hints.append(line)
+            logger.info(f"Loaded {len(hints)} vocabulary hints from {vocabulary_file}")
+            return hints
+        except Exception as e:
+            logger.warning(f"Failed to load vocabulary file: {e}")
+            return []
 
     def sync_episodes(self, max_episodes: int = 100) -> list[Episode]:
         """
@@ -135,7 +169,13 @@ class EpisodePipeline:
 
             # Transcribe
             logger.info(f"  Transcribing...")
-            transcript = self.transcriber.transcribe(download_result.file_path)
+            if self.vocabulary_hints:
+                transcript = self.transcriber.transcribe(
+                    download_result.file_path,
+                    vocabulary_hints=self.vocabulary_hints
+                )
+            else:
+                transcript = self.transcriber.transcribe(download_result.file_path)
             logger.info(f"  Transcribed: {len(transcript.segments)} words")
 
             # Speaker diarization (optional)
@@ -184,18 +224,38 @@ class EpisodePipeline:
         except OSError as e:
             logger.warning(f"  Failed to clean up audio file: {e}")
 
-    def process_unprocessed(self, limit: Optional[int] = 10, offset: int = 0) -> dict:
+    def process_single(self, episode_id: int) -> bool:
+        """
+        Process a specific episode by its database ID.
+
+        Args:
+            episode_id: Database ID of the episode to process.
+
+        Returns:
+            True if successful, False otherwise.
+
+        Raises:
+            ValueError: If episode not found.
+        """
+        episode = self.episode_repo.get_by_id(episode_id)
+        if episode is None:
+            raise ValueError(f"Episode with id={episode_id} not found")
+
+        return self.process_episode(episode)
+
+    def process_unprocessed(self, limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False) -> dict:
         """
         Process all unprocessed episodes.
 
         Args:
             limit: Maximum episodes to process in one run. None for no limit.
             offset: Number of episodes to skip before processing.
+            numbered_only: If True, only process numbered episodes.
 
         Returns:
             Dict with processing statistics.
         """
-        all_unprocessed = self.episode_repo.get_unprocessed()
+        all_unprocessed = self.episode_repo.get_unprocessed(numbered_only=numbered_only)
         if limit is None:
             episodes = all_unprocessed[offset:]
         else:
@@ -217,7 +277,7 @@ class EpisodePipeline:
 
         return stats
 
-    def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10, offset: int = 0) -> dict:
+    def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False) -> dict:
         """
         Run the full pipeline.
 
@@ -226,6 +286,7 @@ class EpisodePipeline:
             max_sync: Max episodes to sync.
             process_limit: Max episodes to process. None for no limit.
             offset: Number of episodes to skip before processing.
+            numbered_only: If True, only process numbered episodes.
 
         Returns:
             Dict with pipeline statistics.
@@ -236,7 +297,7 @@ class EpisodePipeline:
             episodes = self.sync_episodes(max_sync)
             results["synced"] = len(episodes)
 
-        process_stats = self.process_unprocessed(process_limit, offset)
+        process_stats = self.process_unprocessed(process_limit, offset, numbered_only=numbered_only)
         results["processed"] = process_stats
 
         return results

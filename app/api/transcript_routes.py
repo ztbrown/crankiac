@@ -2,6 +2,7 @@ import re
 from typing import Optional
 from flask import Blueprint, jsonify, request
 from app.db.connection import get_cursor
+from app.filters import EpisodeFilter
 from app.transcription.diarization import KNOWN_SPEAKERS
 
 transcript_api = Blueprint("transcript_api", __name__, url_prefix="/api/transcripts")
@@ -68,18 +69,20 @@ def search_transcripts():
     except ValueError:
         return jsonify({"error": "limit and offset must be integers"}), 400
 
-    # Parse filter parameters
-    date_from = request.args.get("date_from", "").strip()
-    date_to = request.args.get("date_to", "").strip()
-    episode_number = request.args.get("episode_number", "").strip()
+    # Parse filter parameters using EpisodeFilter module
+    date_from = request.args.get("date_from", "").strip() or None
+    date_to = request.args.get("date_to", "").strip() or None
+    episode_number_str = request.args.get("episode_number", "").strip()
+    episode_number = int(episode_number_str) if episode_number_str else None
     content_type = request.args.get("content_type", "all").strip().lower()
 
-    filters = {
-        "date_from": date_from if date_from else None,
-        "date_to": date_to if date_to else None,
-        "episode_number": int(episode_number) if episode_number else None,
-        "content_type": content_type if content_type in ("free", "premium") else None,
-    }
+    episode_filter = (
+        EpisodeFilter()
+        .with_date_from(date_from)
+        .with_date_to(date_to)
+        .with_episode_number(episode_number)
+        .with_content_type(content_type)
+    )
 
     if not query:
         return jsonify({"results": [], "query": "", "total": 0})
@@ -88,9 +91,9 @@ def search_transcripts():
     words = query.split()
 
     if len(words) == 1:
-        results, total = search_single_word(query, limit, offset, filters)
+        results, total = search_single_word(query, limit, offset, episode_filter)
     else:
-        results, total = search_phrase(words, limit, offset, filters)
+        results, total = search_phrase(words, limit, offset, episode_filter)
 
     return jsonify({
         "results": results,
@@ -98,42 +101,16 @@ def search_transcripts():
         "total": total,
         "limit": limit,
         "offset": offset,
-        "filters": {k: v for k, v in filters.items() if v is not None}
+        "filters": episode_filter.to_dict()
     })
 
 
-def _build_filter_conditions(filters: dict) -> tuple[str, list]:
-    """Build SQL WHERE conditions and parameters from filters."""
-    conditions = []
-    params = []
-
-    if filters.get("date_from"):
-        conditions.append("e.published_at >= %s")
-        params.append(filters["date_from"])
-
-    if filters.get("date_to"):
-        conditions.append("e.published_at <= %s")
-        params.append(filters["date_to"] + " 23:59:59")
-
-    if filters.get("episode_number"):
-        # Episode titles have format "NNNN - Title", extract and match the number
-        ep_num = filters["episode_number"]
-        conditions.append("e.title ~ %s")
-        params.append(f"^0*{ep_num} - ")
-
-    if filters.get("content_type") == "free":
-        conditions.append("e.is_free = true")
-    elif filters.get("content_type") == "premium":
-        conditions.append("e.is_free = false")
-
-    return " AND ".join(conditions), params
-
-
-def search_single_word(word: str, limit: int, offset: int, filters: dict = None) -> tuple[list[dict], int]:
+def search_single_word(
+    word: str, limit: int, offset: int, episode_filter: Optional[EpisodeFilter] = None
+) -> tuple[list[dict], int]:
     """Search for a single word using trigram index."""
-    filters = filters or {}
-    filter_sql, filter_params = _build_filter_conditions(filters)
-    filter_clause = f" AND {filter_sql}" if filter_sql else ""
+    episode_filter = episode_filter or EpisodeFilter()
+    filter_clause, filter_params = episode_filter.build_clause()
 
     with get_cursor(commit=False) as cursor:
         # Get total count
@@ -208,7 +185,9 @@ def search_single_word(word: str, limit: int, offset: int, filters: dict = None)
         return results, total
 
 
-def search_phrase(words: list[str], limit: int, offset: int, filters: dict = None) -> tuple[list[dict], int]:
+def search_phrase(
+    words: list[str], limit: int, offset: int, episode_filter: Optional[EpisodeFilter] = None
+) -> tuple[list[dict], int]:
     """
     Search for a phrase (consecutive words).
     Finds the first word and verifies subsequent words match.
@@ -216,9 +195,8 @@ def search_phrase(words: list[str], limit: int, offset: int, filters: dict = Non
     if not words:
         return [], 0
 
-    filters = filters or {}
-    filter_sql, filter_params = _build_filter_conditions(filters)
-    filter_clause = f" AND {filter_sql}" if filter_sql else ""
+    episode_filter = episode_filter or EpisodeFilter()
+    filter_clause, filter_params = episode_filter.build_clause()
 
     first_word = words[0]
     num_words = len(words)
