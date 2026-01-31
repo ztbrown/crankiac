@@ -43,12 +43,48 @@ class EpisodeRepository:
                 return Episode(**row)
             return None
 
-    def get_unprocessed(self) -> list[Episode]:
-        """Get all unprocessed episodes."""
+    def get_by_id(self, episode_id: int) -> Optional[Episode]:
+        """Get episode by database ID."""
         with get_cursor(commit=False) as cursor:
             cursor.execute(
-                "SELECT * FROM episodes WHERE NOT processed ORDER BY published_at DESC"
+                "SELECT * FROM episodes WHERE id = %s",
+                (episode_id,)
             )
+            row = cursor.fetchone()
+            if row:
+                return Episode(**row)
+            return None
+
+    def search_by_title(self, query: str) -> list[Episode]:
+        """Search episodes by title substring (case-insensitive)."""
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT * FROM episodes WHERE title ILIKE %s ORDER BY published_at DESC",
+                (f"%{query}%",)
+            )
+            return [Episode(**row) for row in cursor.fetchall()]
+
+    def get_unprocessed(self, numbered_only: bool = False) -> list[Episode]:
+        """Get all unprocessed episodes.
+
+        Args:
+            numbered_only: If True, only return episodes with numbered titles
+                          (titles starting with a digit or containing #digit pattern).
+        """
+        with get_cursor(commit=False) as cursor:
+            if numbered_only:
+                cursor.execute(
+                    """
+                    SELECT * FROM episodes
+                    WHERE NOT processed
+                      AND (title ~ '^[0-9]' OR title ~ '#[0-9]')
+                    ORDER BY published_at DESC
+                    """
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM episodes WHERE NOT processed ORDER BY published_at DESC"
+                )
             return [Episode(**row) for row in cursor.fetchall()]
 
     def mark_processed(self, episode_id: int) -> None:
