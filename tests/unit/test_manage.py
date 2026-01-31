@@ -2,7 +2,11 @@
 import pytest
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import patch, MagicMock
+
+# Get the project root directory (two levels up from this test file)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 class TestProcessCommandArgs:
@@ -15,7 +19,7 @@ class TestProcessCommandArgs:
             [sys.executable, "manage.py", "process", "--help"],
             capture_output=True,
             text=True,
-            cwd="/Users/zackbrown/gt/crankiac/crew/bart"
+            cwd=PROJECT_ROOT
         )
         assert "--diarize" in result.stdout, f"--diarize flag not found in help. stdout: {result.stdout}"
 
@@ -26,7 +30,7 @@ class TestProcessCommandArgs:
             [sys.executable, "manage.py", "process", "--help"],
             capture_output=True,
             text=True,
-            cwd="/Users/zackbrown/gt/crankiac/crew/bart"
+            cwd=PROJECT_ROOT
         )
         assert "--num-speakers" in result.stdout, f"--num-speakers flag not found in help. stdout: {result.stdout}"
 
