@@ -277,3 +277,56 @@ def test_run_process_all(pipeline):
 
     assert results["processed"]["total"] == 20
     assert results["processed"]["success"] == 20
+
+
+@pytest.mark.unit
+def test_process_single_success(pipeline):
+    episode = make_episode(id=42, patreon_id="42")
+    pipeline.episode_repo.get_by_id.return_value = episode
+
+    pipeline.downloader.download.return_value = DownloadResult(
+        success=True, file_path="/tmp/test.mp3", file_size=1000
+    )
+    pipeline.transcriber.transcribe.return_value = make_transcript_result()
+    pipeline.storage.store_transcript.return_value = 3
+
+    result = pipeline.process_single(42)
+
+    assert result is True
+    pipeline.episode_repo.get_by_id.assert_called_once_with(42)
+    pipeline.episode_repo.mark_processed.assert_called_once_with(42)
+
+
+@pytest.mark.unit
+def test_process_single_not_found(pipeline):
+    pipeline.episode_repo.get_by_id.return_value = None
+
+    with pytest.raises(ValueError, match="Episode with id=999 not found"):
+        pipeline.process_single(999)
+
+
+@pytest.mark.unit
+def test_process_unprocessed_numbered_only(pipeline):
+    episodes = [make_episode(id=i, patreon_id=str(i)) for i in range(3)]
+    pipeline.episode_repo.get_unprocessed.return_value = episodes
+
+    pipeline.downloader.download.return_value = DownloadResult(
+        success=True, file_path="/tmp/test.mp3", file_size=1000
+    )
+    pipeline.transcriber.transcribe.return_value = make_transcript_result()
+    pipeline.storage.store_transcript.return_value = 3
+
+    stats = pipeline.process_unprocessed(limit=None, numbered_only=True)
+
+    pipeline.episode_repo.get_unprocessed.assert_called_once_with(numbered_only=True)
+    assert stats["total"] == 3
+    assert stats["success"] == 3
+
+
+@pytest.mark.unit
+def test_run_with_numbered_only(pipeline):
+    pipeline.episode_repo.get_unprocessed.return_value = []
+
+    results = pipeline.run(sync=False, process_limit=10, numbered_only=True)
+
+    pipeline.episode_repo.get_unprocessed.assert_called_once_with(numbered_only=True)

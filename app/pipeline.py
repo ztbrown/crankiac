@@ -184,18 +184,38 @@ class EpisodePipeline:
         except OSError as e:
             logger.warning(f"  Failed to clean up audio file: {e}")
 
-    def process_unprocessed(self, limit: Optional[int] = 10, offset: int = 0) -> dict:
+    def process_single(self, episode_id: int) -> bool:
+        """
+        Process a specific episode by its database ID.
+
+        Args:
+            episode_id: Database ID of the episode to process.
+
+        Returns:
+            True if successful, False otherwise.
+
+        Raises:
+            ValueError: If episode not found.
+        """
+        episode = self.episode_repo.get_by_id(episode_id)
+        if episode is None:
+            raise ValueError(f"Episode with id={episode_id} not found")
+
+        return self.process_episode(episode)
+
+    def process_unprocessed(self, limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False) -> dict:
         """
         Process all unprocessed episodes.
 
         Args:
             limit: Maximum episodes to process in one run. None for no limit.
             offset: Number of episodes to skip before processing.
+            numbered_only: If True, only process numbered episodes.
 
         Returns:
             Dict with processing statistics.
         """
-        all_unprocessed = self.episode_repo.get_unprocessed()
+        all_unprocessed = self.episode_repo.get_unprocessed(numbered_only=numbered_only)
         if limit is None:
             episodes = all_unprocessed[offset:]
         else:
@@ -217,7 +237,7 @@ class EpisodePipeline:
 
         return stats
 
-    def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10, offset: int = 0) -> dict:
+    def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False) -> dict:
         """
         Run the full pipeline.
 
@@ -226,6 +246,7 @@ class EpisodePipeline:
             max_sync: Max episodes to sync.
             process_limit: Max episodes to process. None for no limit.
             offset: Number of episodes to skip before processing.
+            numbered_only: If True, only process numbered episodes.
 
         Returns:
             Dict with pipeline statistics.
@@ -236,7 +257,7 @@ class EpisodePipeline:
             episodes = self.sync_episodes(max_sync)
             results["synced"] = len(episodes)
 
-        process_stats = self.process_unprocessed(process_limit, offset)
+        process_stats = self.process_unprocessed(process_limit, offset, numbered_only=numbered_only)
         results["processed"] = process_stats
 
         return results
