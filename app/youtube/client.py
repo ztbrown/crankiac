@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 import requests
 
-CHAPO_CHANNEL_ID = "UC1XB3P7c3R3PdB4TPe-T3zA"
+CHAPO_CHANNEL_ID = "UCokqzNPBJ65raczldVuHAww"
 YOUTUBE_RSS_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHAPO_CHANNEL_ID}"
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 

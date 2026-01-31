@@ -13,19 +13,137 @@ def migrate():
 def process(args):
     """Run the episode processing pipeline."""
     from app.pipeline import EpisodePipeline
+    from app.db.repository import EpisodeRepository
+    from app.episode_filter import filter_episodes, EXCLUDED_SHOWS
 
     pipeline = EpisodePipeline(
         whisper_model=args.model,
         cleanup_audio=not args.no_cleanup
     )
 
+    # Handle single episode processing by ID
+    if args.episode:
+        print(f"Processing single episode ID={args.episode}...")
+        try:
+            success = pipeline.process_single(args.episode)
+            if success:
+                print("Episode processed successfully.")
+            else:
+                print("Episode processing failed.")
+                sys.exit(1)
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        return
+
+    # Handle single episode processing by title search
+    if args.title:
+        repo = EpisodeRepository()
+        matches = repo.search_by_title(args.title)
+        if not matches:
+            print(f"No episodes found matching '{args.title}'")
+            sys.exit(1)
+        if len(matches) > 1:
+            print(f"Multiple episodes match '{args.title}':")
+            for ep in matches[:10]:
+                print(f"  ID={ep.id}: {ep.title}")
+            if len(matches) > 10:
+                print(f"  ... and {len(matches) - 10} more")
+            print("\nUse --episode ID to specify which one to process.")
+            sys.exit(1)
+        episode = matches[0]
+        print(f"Processing: {episode.title} (ID={episode.id})...")
+        success = pipeline.process_episode(episode)
+        if success:
+            print("Episode processed successfully.")
+        else:
+            print("Episode processing failed.")
+            sys.exit(1)
+        return
+
+    # Batch processing mode
+    # Determine filtering mode: --all-shows disables numbered_only filter
+    numbered_only = not args.all_shows
+
+    # Parse --include-shows if provided
+    include_shows = None
+    if args.include_shows:
+        include_shows = set(s.strip().lower() for s in args.include_shows.split(','))
+        print(f"Including shows: {', '.join(include_shows)}")
+
+    # If --include-shows is used, we need custom filtering
+    if include_shows:
+        # Sync first if needed
+        if not args.no_sync:
+            print(f"Syncing episodes from Patreon (max={args.max_sync})...")
+            episodes = pipeline.sync_episodes(args.max_sync)
+            synced_count = len(episodes)
+        else:
+            synced_count = 0
+
+        # Get unprocessed episodes and apply custom filtering
+        repo = EpisodeRepository()
+        all_unprocessed = repo.get_unprocessed(numbered_only=False)  # Get all, we'll filter ourselves
+
+        # Custom filter: include numbered episodes + specifically included shows
+        filtered = []
+        for ep in all_unprocessed:
+            title_lower = ep.title.lower()
+            # Check if it's a specifically included show
+            is_included_show = any(show in title_lower for show in include_shows)
+            # Check if it's an excluded show (but not in include list)
+            is_excluded = any(show in title_lower for show in EXCLUDED_SHOWS) and not is_included_show
+
+            if is_excluded:
+                continue
+
+            # If numbered_only, also check that it matches number pattern OR is an included show
+            if numbered_only:
+                from app.episode_filter import is_numbered_episode
+                if not is_numbered_episode(ep.title) and not is_included_show:
+                    continue
+
+            filtered.append(ep)
+
+        # Apply offset and limit
+        process_limit = None if args.all else args.limit
+        if process_limit is None:
+            episodes_to_process = filtered[args.offset:]
+        else:
+            episodes_to_process = filtered[args.offset:args.offset + process_limit]
+
+        total = len(episodes_to_process)
+        print(f"Found {len(filtered)} matching episodes, processing {total} (offset={args.offset})...")
+
+        stats = {"total": total, "success": 0, "failed": 0, "skipped": 0}
+        for i, episode in enumerate(episodes_to_process, 1):
+            print(f"[{i}/{total}] {episode.title}")
+            if not episode.audio_url:
+                stats["skipped"] += 1
+                continue
+            if pipeline.process_episode(episode):
+                stats["success"] += 1
+            else:
+                stats["failed"] += 1
+
+        print(f"\nResults:")
+        print(f"  Episodes synced: {synced_count}")
+        print(f"  Processed: {stats['success']}/{stats['total']} succeeded")
+        if stats['skipped']:
+            print(f"  Skipped (no audio): {stats['skipped']}")
+        if stats['failed']:
+            print(f"  Failed: {stats['failed']}")
+        return
+
+    # Standard batch processing (no --include-shows)
     process_limit = None if args.all else args.limit
-    print(f"Running pipeline (sync={not args.no_sync}, limit={'all' if args.all else args.limit}, offset={args.offset}, cleanup={not args.no_cleanup})...")
+    print(f"Running pipeline (sync={not args.no_sync}, limit={'all' if args.all else args.limit}, offset={args.offset}, cleanup={not args.no_cleanup}, numbered_only={numbered_only})...")
     results = pipeline.run(
         sync=not args.no_sync,
         max_sync=args.max_sync,
         process_limit=process_limit,
-        offset=args.offset
+        offset=args.offset,
+        numbered_only=numbered_only
     )
 
     print(f"\nResults:")
@@ -338,11 +456,19 @@ def main():
 
     # process command
     process_parser = subparsers.add_parser("process", help="Process episodes (fetch, download, transcribe)")
+    # Single episode selection
+    process_parser.add_argument("--episode", type=int, metavar="ID", help="Process a specific episode by database ID")
+    process_parser.add_argument("--title", metavar="SEARCH", help="Find and process episode matching title (must be unique match)")
+    # Batch processing options
     process_parser.add_argument("--no-sync", action="store_true", help="Skip syncing from Patreon")
     process_parser.add_argument("--max-sync", type=int, default=100, help="Max episodes to sync")
     process_parser.add_argument("--limit", type=int, default=10, help="Max episodes to process")
     process_parser.add_argument("--offset", type=int, default=0, help="Number of episodes to skip before processing")
     process_parser.add_argument("--all", action="store_true", help="Process all unprocessed episodes (overrides --limit)")
+    # Filtering options
+    process_parser.add_argument("--all-shows", action="store_true", help="Include all show types (override default numbered-only filter)")
+    process_parser.add_argument("--include-shows", metavar="SHOWS", help="Comma-separated shows to include (e.g., 'players club,movie mindset')")
+    # Processing options
     process_parser.add_argument("--model", default="base", help="Whisper model (tiny/base/small/medium/large)")
     process_parser.add_argument("--no-cleanup", action="store_true", help="Keep audio files after transcription")
 
