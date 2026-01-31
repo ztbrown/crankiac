@@ -83,118 +83,52 @@ def test_get_transcriber_uses_env_var():
 
 
 # Tests for vocabulary_hints feature
+# These tests mock Whisper and verify our code passes the correct parameters
 
-@pytest.mark.unit
-def test_transcribe_accepts_vocabulary_hints():
-    """Test that transcribe accepts vocabulary_hints parameter."""
+@pytest.fixture
+def mock_transcriber():
+    """Create a transcriber with mocked Whisper model."""
     transcriber = WhisperTranscriber()
-
-    with patch.object(transcriber, '_model') as mock_model:
-        mock_model.transcribe.return_value = {
-            "text": "Will Menaker said hello",
-            "language": "en",
-            "segments": []
-        }
-        # Force model to be "loaded"
-        transcriber._model = mock_model
-
-        with patch("os.path.exists", return_value=True):
-            # Should not raise - vocabulary_hints is accepted
-            result = transcriber.transcribe(
-                "/tmp/test.mp3",
-                vocabulary_hints=["Will Menaker", "Matt Christman"]
-            )
-            assert result.full_text == "Will Menaker said hello"
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = {
+        "text": "test transcript",
+        "language": "en",
+        "segments": []
+    }
+    transcriber._model = mock_model
+    return transcriber
 
 
 @pytest.mark.unit
-def test_transcribe_builds_initial_prompt_from_vocabulary():
-    """Test that vocabulary_hints builds proper initial_prompt."""
-    transcriber = WhisperTranscriber()
+def test_transcribe_passes_initial_prompt_when_vocabulary_hints_provided(mock_transcriber):
+    """Verify our code constructs initial_prompt and passes it to Whisper."""
+    with patch("os.path.exists", return_value=True):
+        mock_transcriber.transcribe(
+            "/tmp/test.mp3",
+            vocabulary_hints=["Will Menaker", "Matt Christman", "Felix Biederman"]
+        )
 
-    with patch.object(transcriber, '_model') as mock_model:
-        mock_model.transcribe.return_value = {
-            "text": "test",
-            "language": "en",
-            "segments": []
-        }
-        transcriber._model = mock_model
-
-        with patch("os.path.exists", return_value=True):
-            transcriber.transcribe(
-                "/tmp/test.mp3",
-                vocabulary_hints=["Will Menaker", "Matt Christman", "Felix Biederman"]
-            )
-
-        # Verify initial_prompt was passed to model.transcribe
-        call_kwargs = mock_model.transcribe.call_args[1]
-        assert "initial_prompt" in call_kwargs
-        assert "Will Menaker" in call_kwargs["initial_prompt"]
-        assert "Matt Christman" in call_kwargs["initial_prompt"]
-        assert "Felix Biederman" in call_kwargs["initial_prompt"]
+    # Verify Whisper was called with correct initial_prompt
+    call_kwargs = mock_transcriber._model.transcribe.call_args[1]
+    assert "initial_prompt" in call_kwargs
+    assert call_kwargs["initial_prompt"] == "Names mentioned: Will Menaker, Matt Christman, Felix Biederman."
 
 
 @pytest.mark.unit
-def test_transcribe_initial_prompt_format():
-    """Test that initial_prompt has expected format with 'Names mentioned:' prefix."""
-    transcriber = WhisperTranscriber()
+def test_transcribe_omits_initial_prompt_when_no_vocabulary_hints(mock_transcriber):
+    """Verify our code doesn't pass initial_prompt when vocabulary_hints is None."""
+    with patch("os.path.exists", return_value=True):
+        mock_transcriber.transcribe("/tmp/test.mp3")
 
-    with patch.object(transcriber, '_model') as mock_model:
-        mock_model.transcribe.return_value = {
-            "text": "test",
-            "language": "en",
-            "segments": []
-        }
-        transcriber._model = mock_model
-
-        with patch("os.path.exists", return_value=True):
-            transcriber.transcribe(
-                "/tmp/test.mp3",
-                vocabulary_hints=["Will Menaker", "Matt Christman"]
-            )
-
-        call_kwargs = mock_model.transcribe.call_args[1]
-        initial_prompt = call_kwargs["initial_prompt"]
-        assert initial_prompt.startswith("Names mentioned:")
-        assert "Will Menaker" in initial_prompt
-        assert "Matt Christman" in initial_prompt
+    call_kwargs = mock_transcriber._model.transcribe.call_args[1]
+    assert "initial_prompt" not in call_kwargs
 
 
 @pytest.mark.unit
-def test_transcribe_no_vocabulary_hints_no_initial_prompt():
-    """Test that no initial_prompt is passed when vocabulary_hints is None."""
-    transcriber = WhisperTranscriber()
+def test_transcribe_omits_initial_prompt_when_vocabulary_hints_empty(mock_transcriber):
+    """Verify our code doesn't pass initial_prompt when vocabulary_hints is empty list."""
+    with patch("os.path.exists", return_value=True):
+        mock_transcriber.transcribe("/tmp/test.mp3", vocabulary_hints=[])
 
-    with patch.object(transcriber, '_model') as mock_model:
-        mock_model.transcribe.return_value = {
-            "text": "test",
-            "language": "en",
-            "segments": []
-        }
-        transcriber._model = mock_model
-
-        with patch("os.path.exists", return_value=True):
-            transcriber.transcribe("/tmp/test.mp3")
-
-        call_kwargs = mock_model.transcribe.call_args[1]
-        assert "initial_prompt" not in call_kwargs
-
-
-@pytest.mark.unit
-def test_transcribe_empty_vocabulary_hints_no_initial_prompt():
-    """Test that no initial_prompt is passed when vocabulary_hints is empty."""
-    transcriber = WhisperTranscriber()
-
-    with patch.object(transcriber, '_model') as mock_model:
-        mock_model.transcribe.return_value = {
-            "text": "test",
-            "language": "en",
-            "segments": []
-        }
-        transcriber._model = mock_model
-
-        with patch("os.path.exists", return_value=True):
-            transcriber.transcribe("/tmp/test.mp3", vocabulary_hints=[])
-
-        call_kwargs = mock_model.transcribe.call_args[1]
-        assert "initial_prompt" not in call_kwargs
+    call_kwargs = mock_transcriber._model.transcribe.call_args[1]
+    assert "initial_prompt" not in call_kwargs
