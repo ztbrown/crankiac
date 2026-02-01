@@ -566,3 +566,150 @@ def test_map_speaker_to_name_unknown_format_unchanged():
     assert map_speaker_to_name("Speaker_00") == "Speaker_00"  # Wrong case
     assert map_speaker_to_name("SPEAKER_A") == "SPEAKER_A"  # Non-numeric
     assert map_speaker_to_name("") == ""
+
+
+# Tests for PATCH /api/transcripts/segments/speaker endpoint
+@pytest.mark.unit
+def test_update_segment_speakers_missing_updates_field(client):
+    """Test that missing updates field returns 400."""
+    response = client.patch("/api/transcripts/segments/speaker", json={})
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "updates" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_updates_not_array(client):
+    """Test that non-array updates field returns 400."""
+    response = client.patch("/api/transcripts/segments/speaker", json={"updates": "not an array"})
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "array" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_empty_array(client):
+    """Test that empty updates array returns 400."""
+    response = client.patch("/api/transcripts/segments/speaker", json={"updates": []})
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "empty" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_missing_id(client):
+    """Test that update without id field returns 400."""
+    response = client.patch("/api/transcripts/segments/speaker", json={
+        "updates": [{"speaker": "Matt"}]
+    })
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "id" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_missing_speaker(client):
+    """Test that update without speaker field returns 400."""
+    response = client.patch("/api/transcripts/segments/speaker", json={
+        "updates": [{"id": 123}]
+    })
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "speaker" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_invalid_id_type(client):
+    """Test that non-integer id returns 400."""
+    response = client.patch("/api/transcripts/segments/speaker", json={
+        "updates": [{"id": "not an integer", "speaker": "Matt"}]
+    })
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "id" in response.json["error"]
+    assert "integer" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_invalid_speaker_type(client):
+    """Test that non-string speaker returns 400."""
+    response = client.patch("/api/transcripts/segments/speaker", json={
+        "updates": [{"id": 123, "speaker": 456}]
+    })
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "speaker" in response.json["error"]
+    assert "string" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_success(client):
+    """Test successful speaker update."""
+    with patch("app.transcription.storage.TranscriptStorage") as mock_storage_class:
+        mock_storage = MagicMock()
+        mock_storage_class.return_value = mock_storage
+        mock_storage.update_speaker_labels.return_value = 2
+
+        response = client.patch("/api/transcripts/segments/speaker", json={
+            "updates": [
+                {"id": 123, "speaker": "Matt"},
+                {"id": 124, "speaker": "Trey"}
+            ]
+        })
+
+        assert response.status_code == 200
+        data = response.json
+        assert "updated" in data
+        assert data["updated"] == 2
+        assert "requested" in data
+        assert data["requested"] == 2
+
+        # Verify the storage method was called
+        assert mock_storage.update_speaker_labels.called
+        call_args = mock_storage.update_speaker_labels.call_args[0][0]
+        assert len(call_args) == 2
+        assert call_args[0].id == 123
+        assert call_args[0].speaker == "Matt"
+        assert call_args[1].id == 124
+        assert call_args[1].speaker == "Trey"
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_partial_success(client):
+    """Test that partial success returns correct counts."""
+    with patch("app.transcription.storage.TranscriptStorage") as mock_storage_class:
+        mock_storage = MagicMock()
+        mock_storage_class.return_value = mock_storage
+        # Only 1 segment was actually updated (e.g., other didn't exist)
+        mock_storage.update_speaker_labels.return_value = 1
+
+        response = client.patch("/api/transcripts/segments/speaker", json={
+            "updates": [
+                {"id": 123, "speaker": "Matt"},
+                {"id": 999, "speaker": "Unknown"}  # Doesn't exist
+            ]
+        })
+
+        assert response.status_code == 200
+        data = response.json
+        assert data["updated"] == 1
+        assert data["requested"] == 2
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_no_json_body(client):
+    """Test that request with no JSON body returns 415."""
+    response = client.patch("/api/transcripts/segments/speaker")
+    # Flask returns 415 (Unsupported Media Type) for missing content-type
+    assert response.status_code == 415
+
+
+@pytest.mark.unit
+def test_update_segment_speakers_update_not_object(client):
+    """Test that non-object update item returns 400."""
+    response = client.patch("/api/transcripts/segments/speaker", json={
+        "updates": ["not an object"]
+    })
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "object" in response.json["error"]
