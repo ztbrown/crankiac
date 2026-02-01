@@ -926,3 +926,159 @@ def update_segment_speakers():
         "updated": updated_count,
         "requested": len(segments)
     })
+
+
+@transcript_api.route("/episode/<int:episode_id>/segments")
+def get_episode_segments(episode_id: int):
+    """
+    Get paginated transcript segments for an episode.
+
+    Query params:
+        limit: Max segments per page (default 100, max 500)
+        offset: Pagination offset (default 0)
+        speaker: Optional speaker filter
+
+    Returns:
+        JSON with segments list, total count, episode info, and available speakers.
+    """
+    from app.transcription.storage import TranscriptStorage
+
+    try:
+        limit = min(int(request.args.get("limit", 100)), 500)
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        return jsonify({"error": "limit and offset must be integers"}), 400
+
+    speaker_filter = request.args.get("speaker", "").strip() or None
+
+    # Get episode info
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            "SELECT id, title FROM episodes WHERE id = %s",
+            (episode_id,)
+        )
+        episode = cursor.fetchone()
+        if not episode:
+            return jsonify({"error": "Episode not found"}), 404
+
+        # Get available speakers for this episode
+        cursor.execute(
+            """
+            SELECT DISTINCT speaker
+            FROM transcript_segments
+            WHERE episode_id = %s AND speaker IS NOT NULL
+            ORDER BY speaker
+            """,
+            (episode_id,)
+        )
+        episode_speakers = [row["speaker"] for row in cursor.fetchall()]
+
+    # Get paginated segments
+    storage = TranscriptStorage()
+    segments, total = storage.get_segments_paginated(
+        episode_id, limit, offset, speaker_filter
+    )
+
+    # Convert segments to dict format
+    segments_data = [
+        {
+            "id": seg.id,
+            "word": seg.word,
+            "start_time": float(seg.start_time),
+            "end_time": float(seg.end_time),
+            "segment_index": seg.segment_index,
+            "speaker": seg.speaker
+        }
+        for seg in segments
+    ]
+
+    return jsonify({
+        "segments": segments_data,
+        "total": total,
+        "episode_id": episode_id,
+        "episode_title": episode["title"],
+        "episode_speakers": episode_speakers,
+        "known_speakers": KNOWN_SPEAKERS,
+        "limit": limit,
+        "offset": offset,
+        "speaker_filter": speaker_filter
+    })
+
+
+@transcript_api.route("/segments/<int:segment_id>/word", methods=["PATCH"])
+def update_segment_word(segment_id: int):
+    """
+    Update word text for a transcript segment.
+
+    Request body:
+        {
+            "word": "corrected_word"
+        }
+
+    Returns:
+        JSON with updated segment info.
+    """
+    from app.transcription.storage import TranscriptStorage
+
+    data = request.get_json()
+    if not data or "word" not in data:
+        return jsonify({"error": "word field required in request body"}), 400
+
+    new_word = data["word"]
+    if not isinstance(new_word, str):
+        return jsonify({"error": "word must be a string"}), 400
+
+    new_word = new_word.strip()
+    if not new_word:
+        return jsonify({"error": "word cannot be empty"}), 400
+
+    if len(new_word) > 200:
+        return jsonify({"error": "word too long (max 200 characters)"}), 400
+
+    # Update the word
+    storage = TranscriptStorage()
+    success = storage.update_word_text(segment_id, new_word)
+
+    if not success:
+        return jsonify({"error": "Segment not found"}), 404
+
+    return jsonify({
+        "id": segment_id,
+        "word": new_word,
+        "updated": True
+    })
+
+
+@transcript_api.route("/episode/<int:episode_id>/speakers")
+def get_episode_speakers(episode_id: int):
+    """
+    Get available speakers for an episode (known speakers + episode-specific speakers).
+
+    Returns:
+        JSON with known speakers and episode-specific speakers.
+    """
+    with get_cursor(commit=False) as cursor:
+        # Verify episode exists
+        cursor.execute(
+            "SELECT id FROM episodes WHERE id = %s",
+            (episode_id,)
+        )
+        if not cursor.fetchone():
+            return jsonify({"error": "Episode not found"}), 404
+
+        # Get speakers from this episode
+        cursor.execute(
+            """
+            SELECT DISTINCT speaker
+            FROM transcript_segments
+            WHERE episode_id = %s AND speaker IS NOT NULL
+            ORDER BY speaker
+            """,
+            (episode_id,)
+        )
+        episode_speakers = [row["speaker"] for row in cursor.fetchall()]
+
+    return jsonify({
+        "known_speakers": KNOWN_SPEAKERS,
+        "episode_speakers": episode_speakers
+    })

@@ -256,3 +256,24 @@ class TranscriptStorage:
             ]
 
             return segments, total
+
+    def update_word_text(self, segment_id: int, new_word: str) -> bool:
+        """
+        Update the word text for a specific transcript segment.
+
+        Args:
+            segment_id: ID of the segment to update.
+            new_word: New word text.
+
+        Returns:
+            True if segment was found and updated, False otherwise.
+        """
+        if not new_word or not new_word.strip():
+            return False
+
+        with get_cursor() as cursor:
+            cursor.execute(
+                "UPDATE transcript_segments SET word = %s WHERE id = %s",
+                (new_word.strip(), segment_id)
+            )
+            return cursor.rowcount > 0
