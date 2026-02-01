@@ -3,71 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcript Editor - Crankiac</title>
-    <link rel="stylesheet" href="editor.css">
+    <title>Transcript Editor</title>
+    <link rel="stylesheet" href="/static/editor.css">
 </head>
 <body>
     <div class="container">
-        <header>
+        <header class="editor-header">
             <h1>Transcript Editor</h1>
-            <div class="episode-selector">
-                <label for="episode-select">Episode:</label>
-                <select id="episode-select">
-                    <option value="">Select an episode...</option>
-                </select>
-            </div>
+            <a href="/" class="back-link">← Back to Search</a>
         </header>
 
-        <div id="loading-indicator" class="loading" style="display: none;">
-            Loading transcript...
+        <div class="editor-controls">
+            <div class="control-group">
+                <label for="episode-select">Episode:</label>
+                <select id="episode-select" class="episode-select">
+                    <option value="">-- Select an episode --</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="speaker-filter">Filter by speaker:</label>
+                <select id="speaker-filter" class="speaker-filter">
+                    <option value="">All speakers</option>
+                </select>
+            </div>
+
+            <div class="episode-info">
+                <span id="episode-title" class="episode-title"></span>
+                <span id="segment-count" class="segment-count"></span>
+            </div>
         </div>
 
-        <div id="editor-content" style="display: none;">
-            <div class="toolbar">
-                <div class="toolbar-section">
-                    <label for="speaker-select">Change speaker:</label>
-                    <select id="speaker-select">
-                        <option value="">Select speaker...</option>
-                    </select>
-                    <button id="apply-speaker-btn" disabled>Apply</button>
-                </div>
-                <div class="toolbar-section">
-                    <span id="selection-count">0 segments selected</span>
-                </div>
+        <div class="bulk-edit-toolbar">
+            <div class="toolbar-section">
+                <input type="checkbox" id="select-all" class="select-all-checkbox">
+                <label for="select-all" class="select-all-label">Select All</label>
+                <span id="selection-count" class="selection-count"></span>
             </div>
 
-            <div class="table-container">
-                <table id="transcript-table">
-                    <thead>
-                        <tr>
-                            <th class="col-checkbox">
-                                <input type="checkbox" id="select-all">
-                            </th>
-                            <th class="col-time">Time</th>
-                            <th class="col-speaker">Speaker</th>
-                            <th class="col-word">Word</th>
-                        </tr>
-                    </thead>
-                    <tbody id="transcript-body">
-                        <!-- Segments will be rendered here -->
-                    </tbody>
-                </table>
+            <div class="toolbar-section">
+                <label for="bulk-speaker-select">Change speaker to:</label>
+                <select id="bulk-speaker-select" class="bulk-speaker-select">
+                    <option value="">-- Select speaker --</option>
+                </select>
+                <button id="apply-speaker-btn" class="btn btn-primary" disabled>Apply to Selected</button>
             </div>
+        </div>
 
-            <div id="empty-state" style="display: none;">
-                No segments found for this episode.
-            </div>
+        <div id="loading-container" class="loading-container" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Loading transcript...</p>
+        </div>
 
-            <div class="pagination">
-                <button id="prev-page" disabled>Previous</button>
-                <span id="page-info">Page 1 of 1</span>
-                <button id="next-page" disabled>Next</button>
+        <div id="error-container" class="error-container" style="display: none;">
+            <div class="error-message">
+                <span class="error-icon">⚠</span>
+                <span id="error-text" class="error-text"></span>
             </div>
+            <button id="error-dismiss" class="btn btn-secondary">Dismiss</button>
+        </div>
+
+        <div class="table-container">
+            <table id="segments-table" class="segments-table">
+                <thead>
+                    <tr>
+                        <th class="col-checkbox">
+                            <span class="sr-only">Select</span>
+                        </th>
+                        <th class="col-time">Time</th>
+                        <th class="col-speaker">Speaker</th>
+                        <th class="col-word">Word</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="segments-body">
+                    <!-- Segments will be inserted here dynamically -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-controls">
+            <button id="prev-page-btn" class="btn btn-secondary" disabled>← Previous</button>
+            <span id="page-info" class="page-info">Page 1 of 1</span>
+            <button id="next-page-btn" class="btn btn-secondary" disabled>Next →</button>
         </div>
     </div>
 
-    <div id="toast-container"></div>
+    <!-- Toast notification (will be created dynamically) -->
+    <div id="toast-container" class="toast-container"></div>
 
-    <script src="editor.js"></script>
+    <script src="/static/version.js"></script>
+    <script src="/static/editor.js"></script>
 </body>
 </html>
