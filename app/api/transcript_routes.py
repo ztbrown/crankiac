@@ -1047,38 +1047,3 @@ def update_segment_word(segment_id: int):
         "word": new_word,
         "updated": True
     })
-
-
-@transcript_api.route("/episode/<int:episode_id>/speakers")
-def get_episode_speakers(episode_id: int):
-    """
-    Get available speakers for an episode (known speakers + episode-specific speakers).
-
-    Returns:
-        JSON with known speakers and episode-specific speakers.
-    """
-    with get_cursor(commit=False) as cursor:
-        # Verify episode exists
-        cursor.execute(
-            "SELECT id FROM episodes WHERE id = %s",
-            (episode_id,)
-        )
-        if not cursor.fetchone():
-            return jsonify({"error": "Episode not found"}), 404
-
-        # Get speakers from this episode
-        cursor.execute(
-            """
-            SELECT DISTINCT speaker
-            FROM transcript_segments
-            WHERE episode_id = %s AND speaker IS NOT NULL
-            ORDER BY speaker
-            """,
-            (episode_id,)
-        )
-        episode_speakers = [row["speaker"] for row in cursor.fetchall()]
-
-    return jsonify({
-        "known_speakers": KNOWN_SPEAKERS,
-        "episode_speakers": episode_speakers
-    })
