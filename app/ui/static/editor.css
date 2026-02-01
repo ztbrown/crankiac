@@ -1,0 +1,168 @@
+.episode-selector {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+.episode-selector label {
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.episode-selector select {
+    padding: 8px 12px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    min-width: 300px;
+}
+
+.loading-indicator {
+    margin-left: 10px;
+    color: #666;
+    font-style: italic;
+}
+
+.error-message {
+    margin-left: 10px;
+    color: #d32f2f;
+    font-weight: bold;
+}
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 20px 0;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.toolbar button {
+    padding: 8px 16px;
+    margin-right: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.toolbar button:hover:not(:disabled) {
+    background: #f0f0f0;
+}
+
+.toolbar button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.toolbar-stats {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.toolbar-stats span {
+    color: #666;
+}
+
+#speaker-filter-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#speaker-filter {
+    padding: 4px 8px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.segment-table-container {
+    margin: 20px 0;
+    overflow-x: auto;
+}
+
+.segment-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.segment-table th,
+.segment-table td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.segment-table th {
+    background: #f5f5f5;
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+}
+
+.segment-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.segment-table .empty-state td {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    font-style: italic;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin: 20px 0;
+    padding: 15px;
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+.pagination button {
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.pagination button:hover:not(:disabled) {
+    background: #e0e0e0;
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#page-info {
+    font-weight: bold;
+    min-width: 100px;
+    text-align: center;
+}
+
+.page-size-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.page-size-selector select {
+    padding: 4px 8px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}

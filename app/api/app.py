@@ -29,6 +29,10 @@ def create_app():
     def index():
         return app.send_static_file("index.html")
 
+    @app.route("/editor")
+    def editor():
+        return app.send_static_file("editor.html")
+
     # Initialize database on first request
     with app.app_context():
         init_db()
