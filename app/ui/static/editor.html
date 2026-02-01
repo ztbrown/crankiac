@@ -3,77 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcript Editor</title>
-    <link rel="stylesheet" href="/static/styles.css">
-    <link rel="stylesheet" href="/static/editor.css">
+    <title>Transcript Editor - Crankiac</title>
+    <link rel="stylesheet" href="editor.css">
 </head>
 <body>
     <div class="container">
-        <h1>Transcript Editor</h1>
-
-        <!-- Episode Selector -->
-        <div class="episode-selector">
-            <label for="episode-select">Episode:</label>
-            <select id="episode-select">
-                <option value="">Select an episode...</option>
-            </select>
-            <span id="loading-indicator" class="loading-indicator" style="display: none;">Loading...</span>
-            <span id="error-message" class="error-message" style="display: none;"></span>
-        </div>
-
-        <!-- Toolbar -->
-        <div class="toolbar">
-            <button id="save-btn" disabled>Save Changes</button>
-            <button id="export-btn" disabled>Export</button>
-            <div class="toolbar-stats">
-                <span id="segment-count">0 segments</span>
-                <span id="speaker-filter-container">
-                    <label for="speaker-filter">Filter by speaker:</label>
-                    <select id="speaker-filter">
-                        <option value="">All speakers</option>
-                    </select>
-                </span>
-            </div>
-        </div>
-
-        <!-- Segment Table -->
-        <div class="segment-table-container">
-            <table id="segment-table" class="segment-table">
-                <thead>
-                    <tr>
-                        <th>Select</th>
-                        <th>Time</th>
-                        <th>Speaker</th>
-                        <th>Text</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="segment-table-body">
-                    <tr class="empty-state">
-                        <td colspan="5">Select an episode to begin editing</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Pagination -->
-        <div class="pagination">
-            <button id="prev-page-btn" disabled>Previous</button>
-            <span id="page-info">Page 1</span>
-            <button id="next-page-btn" disabled>Next</button>
-            <div class="page-size-selector">
-                <label for="page-size">Items per page:</label>
-                <select id="page-size">
-                    <option value="50">50</option>
-                    <option value="100" selected>100</option>
-                    <option value="200">200</option>
+        <header>
+            <h1>Transcript Editor</h1>
+            <div class="episode-selector">
+                <label for="episode-select">Episode:</label>
+                <select id="episode-select">
+                    <option value="">Select an episode...</option>
                 </select>
+            </div>
+        </header>
+
+        <div id="loading-indicator" class="loading" style="display: none;">
+            Loading transcript...
+        </div>
+
+        <div id="editor-content" style="display: none;">
+            <div class="toolbar">
+                <div class="toolbar-section">
+                    <label for="speaker-select">Change speaker:</label>
+                    <select id="speaker-select">
+                        <option value="">Select speaker...</option>
+                    </select>
+                    <button id="apply-speaker-btn" disabled>Apply</button>
+                </div>
+                <div class="toolbar-section">
+                    <span id="selection-count">0 segments selected</span>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="transcript-table">
+                    <thead>
+                        <tr>
+                            <th class="col-checkbox">
+                                <input type="checkbox" id="select-all">
+                            </th>
+                            <th class="col-time">Time</th>
+                            <th class="col-speaker">Speaker</th>
+                            <th class="col-word">Word</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transcript-body">
+                        <!-- Segments will be rendered here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="empty-state" style="display: none;">
+                No segments found for this episode.
+            </div>
+
+            <div class="pagination">
+                <button id="prev-page" disabled>Previous</button>
+                <span id="page-info">Page 1 of 1</span>
+                <button id="next-page" disabled>Next</button>
             </div>
         </div>
     </div>
-    <footer class="app-footer">
-        <a href="/">Back to Search</a>
-    </footer>
-    <script src="/static/editor.js"></script>
+
+    <div id="toast-container"></div>
+
+    <script src="editor.js"></script>
 </body>
 </html>

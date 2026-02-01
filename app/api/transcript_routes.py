@@ -814,6 +814,45 @@ def search_by_speaker():
         })
 
 
+@transcript_api.route("/episode/<int:episode_id>/speakers")
+def get_episode_speakers(episode_id: int):
+    """
+    Get available speakers for an episode.
+
+    Returns KNOWN_SPEAKERS constant plus distinct speakers from episode's segments.
+
+    Args:
+        episode_id: Episode ID
+
+    Returns:
+        JSON: {"known_speakers": [...], "episode_speakers": [...]}
+        404 if episode doesn't exist
+    """
+    with get_cursor(commit=False) as cursor:
+        # Check if episode exists
+        cursor.execute("SELECT id FROM episodes WHERE id = %s", (episode_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": "Episode not found"}), 404
+
+        # Get distinct speakers from episode's segments
+        cursor.execute(
+            """
+            SELECT DISTINCT speaker
+            FROM transcript_segments
+            WHERE episode_id = %s AND speaker IS NOT NULL
+            ORDER BY speaker
+            """,
+            (episode_id,)
+        )
+
+        episode_speakers = [row["speaker"] for row in cursor.fetchall()]
+
+        return jsonify({
+            "known_speakers": KNOWN_SPEAKERS,
+            "episode_speakers": episode_speakers
+        })
+
+
 @transcript_api.route("/segments/speaker", methods=["PATCH"])
 def update_segment_speakers():
     """
