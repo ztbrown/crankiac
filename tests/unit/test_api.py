@@ -713,3 +713,96 @@ def test_update_segment_speakers_update_not_object(client):
     assert response.status_code == 400
     assert "error" in response.json
     assert "object" in response.json["error"]
+
+
+# Tests for PATCH /api/transcripts/segments/<id>/word endpoint
+@pytest.mark.unit
+def test_update_segment_word_success(client):
+    """Test successful word update."""
+    with patch("app.transcription.storage.TranscriptStorage") as mock_storage_class:
+        mock_storage = MagicMock()
+        mock_storage_class.return_value = mock_storage
+        mock_storage.update_word_text.return_value = True
+
+        response = client.patch(
+            "/api/transcripts/segments/123/word",
+            json={"word": "corrected"}
+        )
+        assert response.status_code == 200
+        data = response.json
+        assert data["id"] == 123
+        assert data["word"] == "corrected"
+        assert data["updated"] is True
+
+
+@pytest.mark.unit
+def test_update_segment_word_missing_json_body(client):
+    """Test that missing JSON body returns 415 (Unsupported Media Type)."""
+    response = client.patch("/api/transcripts/segments/123/word")
+    # Flask returns 415 when no content-type header or missing body
+    assert response.status_code == 415
+
+
+@pytest.mark.unit
+def test_update_segment_word_missing_word_field(client):
+    """Test that missing word field returns 400."""
+    response = client.patch(
+        "/api/transcripts/segments/123/word",
+        json={"other": "value"}
+    )
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "word field required" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_word_not_string(client):
+    """Test that non-string word value returns 400."""
+    response = client.patch(
+        "/api/transcripts/segments/123/word",
+        json={"word": 123}
+    )
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "word must be a string" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_word_empty_string(client):
+    """Test that empty string word value returns 400."""
+    response = client.patch(
+        "/api/transcripts/segments/123/word",
+        json={"word": ""}
+    )
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "word cannot be empty" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_word_whitespace_only(client):
+    """Test that whitespace-only word value returns 400."""
+    response = client.patch(
+        "/api/transcripts/segments/123/word",
+        json={"word": "   "}
+    )
+    assert response.status_code == 400
+    assert "error" in response.json
+    assert "word cannot be empty" in response.json["error"]
+
+
+@pytest.mark.unit
+def test_update_segment_word_not_found(client):
+    """Test that non-existent segment returns 404."""
+    with patch("app.transcription.storage.TranscriptStorage") as mock_storage_class:
+        mock_storage = MagicMock()
+        mock_storage_class.return_value = mock_storage
+        mock_storage.update_word_text.return_value = False
+
+        response = client.patch(
+            "/api/transcripts/segments/999/word",
+            json={"word": "corrected"}
+        )
+        assert response.status_code == 404
+        assert "error" in response.json
+        assert "not found" in response.json["error"].lower()
