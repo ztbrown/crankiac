@@ -20,10 +20,12 @@ Add 4 new endpoints to `/app/api/transcript_routes.py`:
    - Returns: paginated segments with episode info and available speakers
    - Response includes: segments list, total count, episode title, speakers list
 
-2. **PATCH `/api/transcripts/segments/speaker`** - Update speaker for multiple segments
-   - Request body: `{"segment_ids": [1, 2, 3], "speaker": "Matt"}`
-   - Returns: `{"updated": 3, "segment_ids": [1, 2, 3], "speaker": "Matt"}`
-   - Uses batch UPDATE in single transaction
+2. **PATCH `/api/transcripts/segments/speaker`** - Update speaker for multiple segments ✅ **IMPLEMENTED**
+   - Request body: `{"updates": [{"id": 123, "speaker": "Matt"}, {"id": 124, "speaker": "Trey"}]}`
+   - Returns: `{"updated": 2, "requested": 2}`
+   - More flexible than original plan: allows different speakers per segment in one request
+   - Uses batch UPDATE in single transaction via `TranscriptStorage.update_speaker_labels()`
+   - Comprehensive test coverage in `tests/unit/test_api.py`
 
 3. **PATCH `/api/transcripts/segments/<segment_id>/word`** - Edit word text
    - Request body: `{"word": "corrected_word"}`
