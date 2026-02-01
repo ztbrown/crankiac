@@ -166,30 +166,3 @@ class TranscriptStorage:
                         updated += cursor.rowcount
 
         return updated
-
-    def update_speakers_by_ids(self, segment_ids: list[int], speaker: str) -> int:
-        """
-        Update speaker label for transcript segments by their IDs.
-
-        Args:
-            segment_ids: List of transcript segment IDs to update.
-            speaker: Speaker label to apply to all segments.
-
-        Returns:
-            Number of segments updated.
-        """
-        if not segment_ids:
-            return 0
-
-        updated = 0
-        with get_cursor() as cursor:
-            for batch_start in range(0, len(segment_ids), BATCH_SIZE):
-                batch = segment_ids[batch_start:batch_start + BATCH_SIZE]
-                placeholders = ",".join(["%s"] * len(batch))
-                cursor.execute(
-                    f"UPDATE transcript_segments SET speaker = %s WHERE id IN ({placeholders})",
-                    [speaker] + batch
-                )
-                updated += cursor.rowcount
-
-        return updated
