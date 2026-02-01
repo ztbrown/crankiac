@@ -274,6 +274,85 @@ class EpisodePipeline:
 
         return stats
 
+    def diarize_episode(self, episode: Episode) -> bool:
+        """
+        Run speaker diarization on an already-transcribed episode.
+
+        This downloads the audio, runs diarization, and updates existing
+        transcript segments with speaker labels. Much faster than re-transcribing.
+
+        Args:
+            episode: Episode to diarize (must already have transcript).
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if episode.id is None:
+            raise ValueError(
+                f"Cannot diarize episode '{episode.title}': episode.id is None."
+            )
+
+        logger.info(f"Diarizing: {episode.title}")
+
+        # Check if episode has transcript
+        if not self.storage.has_transcript(episode.id):
+            logger.warning(f"  No transcript found, skipping")
+            return False
+
+        # Skip if no audio URL
+        if not episode.audio_url:
+            logger.warning(f"  No audio URL, skipping")
+            return False
+
+        # Check if diarizer is available
+        if not self.diarizer:
+            logger.error(f"  Diarizer not initialized. Use --diarize flag or set HF_TOKEN.")
+            return False
+
+        try:
+            # Download audio
+            logger.info(f"  Downloading audio...")
+            download_result = self.downloader.download(episode.audio_url, episode.patreon_id)
+            if not download_result.success:
+                logger.error(f"  Download failed: {download_result.error}")
+                return False
+            logger.info(f"  Downloaded: {download_result.file_size} bytes")
+
+            # Get existing transcript segments
+            logger.info(f"  Loading existing transcript...")
+            segments = self.storage.get_segments_for_diarization(episode.id)
+            logger.info(f"  Found {len(segments)} segments")
+
+            # Run diarization
+            logger.info(f"  Running speaker diarization...")
+            speaker_segments = self.diarizer.diarize(download_result.file_path)
+            logger.info(f"  Found {len(speaker_segments)} speaker segments")
+
+            # Assign speakers to words
+            from app.transcription.diarization import assign_speakers_to_words
+            updated_segments = assign_speakers_to_words(segments, speaker_segments)
+
+            speakers_found = len(set(s.speaker for s in updated_segments if s.speaker))
+            logger.info(f"  Assigned {speakers_found} unique speakers")
+
+            # Update database
+            logger.info(f"  Updating transcript with speaker labels...")
+            count = self.storage.update_speaker_labels(updated_segments)
+            logger.info(f"  Updated {count} segments")
+
+            # Cleanup audio file
+            if self.cleanup_audio and download_result.file_path:
+                self._cleanup_audio(download_result.file_path)
+
+            logger.info(f"  Done!")
+            return True
+
+        except Exception as e:
+            logger.error(f"  Error diarizing episode: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False) -> dict:
         """
         Run the full pipeline.

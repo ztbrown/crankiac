@@ -190,6 +190,63 @@ def process(args):
         print(f"  Failed: {results['processed']['failed']}")
 
 
+def diarize(args):
+    """Run speaker diarization on already-transcribed episodes."""
+    from app.pipeline import EpisodePipeline
+    from app.db.repository import EpisodeRepository
+
+    pipeline = EpisodePipeline(
+        cleanup_audio=not args.no_cleanup,
+        enable_diarization=True,
+        num_speakers=args.num_speakers
+    )
+
+    repo = EpisodeRepository()
+
+    # Handle --episodes flag: diarize specific episodes by number
+    if args.episodes:
+        episode_numbers = [int(n.strip()) for n in args.episodes.split(",")]
+        episodes = repo.get_by_episode_numbers(episode_numbers)
+
+        if not episodes:
+            print(f"No episodes found matching: {args.episodes}")
+            sys.exit(1)
+
+        print(f"Diarizing {len(episodes)} episodes: {args.episodes}")
+        stats = {"total": len(episodes), "success": 0, "failed": 0, "skipped": 0}
+
+        for i, episode in enumerate(episodes, 1):
+            print(f"[{i}/{len(episodes)}] {episode.title}")
+            if pipeline.diarize_episode(episode):
+                stats["success"] += 1
+            else:
+                stats["failed"] += 1
+
+        print(f"\nResults:")
+        print(f"  Diarized: {stats['success']}/{stats['total']} succeeded")
+        if stats['failed']:
+            print(f"  Failed: {stats['failed']}")
+        return
+
+    # Handle --episode flag: diarize single episode by ID
+    if args.episode:
+        episode = repo.get_by_id(args.episode)
+        if not episode:
+            print(f"Episode with ID {args.episode} not found")
+            sys.exit(1)
+
+        print(f"Diarizing: {episode.title}")
+        if pipeline.diarize_episode(episode):
+            print("Diarization complete.")
+        else:
+            print("Diarization failed.")
+            sys.exit(1)
+        return
+
+    print("Error: Must specify --episodes or --episode")
+    sys.exit(1)
+
+
 def youtube_fetch(args):
     """Fetch YouTube videos and save to JSON."""
     from app.youtube.client import fetch_and_save_videos
@@ -514,6 +571,13 @@ def main():
     # Vocabulary hints
     process_parser.add_argument("--vocab", metavar="PATH", help="Path to vocabulary file (names/terms, one per line)")
 
+    # diarize command
+    diarize_parser = subparsers.add_parser("diarize", help="Run speaker diarization on already-transcribed episodes")
+    diarize_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to diarize (e.g., 1003,1006)")
+    diarize_parser.add_argument("--episode", type=int, metavar="ID", help="Diarize a specific episode by database ID")
+    diarize_parser.add_argument("--num-speakers", type=int, default=None, help="Hint for number of speakers (optional)")
+    diarize_parser.add_argument("--no-cleanup", action="store_true", help="Keep audio files after diarization")
+
     # youtube-fetch command
     fetch_parser = subparsers.add_parser("youtube-fetch", help="Fetch YouTube videos and save to JSON")
     fetch_parser.add_argument("--output", "-o", help="Output JSON file path (default: app/data/youtube_videos.json)")
@@ -553,6 +617,8 @@ def main():
         migrate()
     elif args.command == "process":
         process(args)
+    elif args.command == "diarize":
+        diarize(args)
     elif args.command == "youtube-fetch":
         youtube_fetch(args)
     elif args.command == "youtube-sync":

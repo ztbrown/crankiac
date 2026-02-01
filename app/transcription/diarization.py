@@ -39,6 +39,15 @@ class SpeakerDiarizer:
         """Lazy load the diarization pipeline."""
         if self._pipeline is None:
             try:
+                # PyTorch 2.6+ changed weights_only default to True, which breaks
+                # pyannote model loading. Patch lightning_fabric to use weights_only=False.
+                import torch
+                import lightning_fabric.utilities.cloud_io as cloud_io
+                original_load = cloud_io._load
+                def patched_load(path_or_url, map_location=None, **kwargs):
+                    return torch.load(path_or_url, map_location=map_location, weights_only=False)
+                cloud_io._load = patched_load
+
                 from pyannote.audio import Pipeline
 
                 if not self.hf_token:

@@ -105,3 +105,64 @@ class TranscriptStorage:
     def has_transcript(self, episode_id: int) -> bool:
         """Check if an episode has any transcript segments."""
         return self.get_episode_word_count(episode_id) > 0
+
+    def get_segments_for_diarization(self, episode_id: int) -> list[TranscriptSegment]:
+        """
+        Get all transcript segments for an episode (for diarization).
+
+        Args:
+            episode_id: Database ID of the episode.
+
+        Returns:
+            List of TranscriptSegment objects with id, start_time, end_time.
+        """
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                """
+                SELECT id, episode_id, word, start_time, end_time, segment_index, speaker
+                FROM transcript_segments
+                WHERE episode_id = %s
+                ORDER BY segment_index
+                """,
+                (episode_id,)
+            )
+            rows = cursor.fetchall()
+            return [
+                TranscriptSegment(
+                    id=row["id"],
+                    episode_id=row["episode_id"],
+                    word=row["word"],
+                    start_time=Decimal(str(row["start_time"])),
+                    end_time=Decimal(str(row["end_time"])),
+                    segment_index=row["segment_index"],
+                    speaker=row["speaker"]
+                )
+                for row in rows
+            ]
+
+    def update_speaker_labels(self, segments: list[TranscriptSegment]) -> int:
+        """
+        Update speaker labels for existing transcript segments.
+
+        Args:
+            segments: List of TranscriptSegment objects with id and speaker set.
+
+        Returns:
+            Number of segments updated.
+        """
+        if not segments:
+            return 0
+
+        updated = 0
+        with get_cursor() as cursor:
+            for batch_start in range(0, len(segments), BATCH_SIZE):
+                batch = segments[batch_start:batch_start + BATCH_SIZE]
+                for seg in batch:
+                    if seg.id is not None:
+                        cursor.execute(
+                            "UPDATE transcript_segments SET speaker = %s WHERE id = %s",
+                            (seg.speaker, seg.id)
+                        )
+                        updated += cursor.rowcount
+
+        return updated
