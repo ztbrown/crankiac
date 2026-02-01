@@ -534,6 +534,60 @@ def list_speakers():
         return jsonify({"speakers": speakers})
 
 
+@transcript_api.route("/episode/<int:episode_id>/speakers")
+def get_episode_speakers(episode_id):
+    """
+    Get all speakers for a specific episode with their word counts.
+
+    Path params:
+        episode_id: Episode ID
+
+    Returns:
+        JSON with episode info and list of speakers with word counts.
+    """
+    with get_cursor(commit=False) as cursor:
+        # First verify the episode exists
+        cursor.execute(
+            """
+            SELECT id, title, patreon_id
+            FROM episodes
+            WHERE id = %s
+            """,
+            (episode_id,)
+        )
+        episode = cursor.fetchone()
+        if not episode:
+            return jsonify({"error": "Episode not found"}), 404
+
+        # Get speakers for this episode
+        cursor.execute(
+            """
+            SELECT speaker, COUNT(*) as word_count
+            FROM transcript_segments
+            WHERE episode_id = %s AND speaker IS NOT NULL
+            GROUP BY speaker
+            ORDER BY word_count DESC
+            """,
+            (episode_id,)
+        )
+
+        speakers = []
+        for row in cursor.fetchall():
+            mapped_speaker = map_speaker_to_name(row["speaker"])
+            speakers.append({
+                "speaker": row["speaker"],
+                "mapped_name": mapped_speaker,
+                "word_count": row["word_count"]
+            })
+
+        return jsonify({
+            "episode_id": episode["id"],
+            "episode_title": episode["title"],
+            "patreon_id": episode["patreon_id"],
+            "speakers": speakers
+        })
+
+
 @transcript_api.route("/on-this-day")
 def on_this_day():
     """
