@@ -193,3 +193,66 @@ class TranscriptStorage:
                 updated += cursor.rowcount
 
         return updated
+
+    def get_segments_paginated(
+        self,
+        episode_id: int,
+        limit: int = 100,
+        offset: int = 0,
+        speaker: Optional[str] = None
+    ) -> tuple[list[TranscriptSegment], int]:
+        """
+        Get paginated transcript segments for an episode.
+
+        Args:
+            episode_id: Database ID of the episode.
+            limit: Maximum number of segments to return.
+            offset: Number of segments to skip.
+            speaker: Optional speaker filter.
+
+        Returns:
+            Tuple of (segments list, total count).
+        """
+        with get_cursor(commit=False) as cursor:
+            # Build query with optional speaker filter
+            where_clause = "WHERE episode_id = %s"
+            params = [episode_id]
+
+            if speaker is not None:
+                where_clause += " AND speaker = %s"
+                params.append(speaker)
+
+            # Get total count
+            cursor.execute(
+                f"SELECT COUNT(*) as count FROM transcript_segments {where_clause}",
+                params
+            )
+            total = cursor.fetchone()["count"]
+
+            # Get paginated segments
+            cursor.execute(
+                f"""
+                SELECT id, episode_id, word, start_time, end_time, segment_index, speaker
+                FROM transcript_segments
+                {where_clause}
+                ORDER BY segment_index
+                LIMIT %s OFFSET %s
+                """,
+                params + [limit, offset]
+            )
+
+            rows = cursor.fetchall()
+            segments = [
+                TranscriptSegment(
+                    id=row["id"],
+                    episode_id=row["episode_id"],
+                    word=row["word"],
+                    start_time=Decimal(str(row["start_time"])),
+                    end_time=Decimal(str(row["end_time"])),
+                    segment_index=row["segment_index"],
+                    speaker=row["speaker"]
+                )
+                for row in rows
+            ]
+
+            return segments, total

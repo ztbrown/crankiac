@@ -597,6 +597,88 @@ def on_this_day():
         })
 
 
+@transcript_api.route("/episode/<int:episode_id>/segments")
+def get_episode_segments(episode_id: int):
+    """
+    Get paginated transcript segments for an episode.
+
+    Path params:
+        episode_id: Episode ID
+
+    Query params:
+        limit: Max results (default 100, max 500)
+        offset: Pagination offset (default 0)
+        speaker: Filter by speaker name (optional)
+
+    Returns:
+        JSON with segments, total count, episode title, and unique speakers.
+    """
+    try:
+        limit = min(int(request.args.get("limit", 100)), 500)
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        return jsonify({"error": "limit and offset must be integers"}), 400
+
+    speaker = request.args.get("speaker", "").strip() or None
+
+    # Check if episode exists and get title
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            "SELECT id, title FROM episodes WHERE id = %s",
+            (episode_id,)
+        )
+        episode_row = cursor.fetchone()
+        if not episode_row:
+            return jsonify({"error": "Episode not found"}), 404
+
+        episode_title = episode_row["title"]
+
+        # Get unique speakers for this episode
+        cursor.execute(
+            """
+            SELECT DISTINCT speaker
+            FROM transcript_segments
+            WHERE episode_id = %s AND speaker IS NOT NULL
+            ORDER BY speaker
+            """,
+            (episode_id,)
+        )
+        speakers = [row["speaker"] for row in cursor.fetchall()]
+
+    # Get paginated segments using storage layer
+    from app.transcription.storage import TranscriptStorage
+    storage = TranscriptStorage()
+    segments, total = storage.get_segments_paginated(
+        episode_id=episode_id,
+        limit=limit,
+        offset=offset,
+        speaker=speaker
+    )
+
+    # Convert to JSON-serializable format
+    segments_data = [
+        {
+            "id": seg.id,
+            "word": seg.word,
+            "start_time": float(seg.start_time),
+            "end_time": float(seg.end_time),
+            "segment_index": seg.segment_index,
+            "speaker": seg.speaker
+        }
+        for seg in segments
+    ]
+
+    return jsonify({
+        "segments": segments_data,
+        "total": total,
+        "episode_title": episode_title,
+        "speakers": speakers,
+        "limit": limit,
+        "offset": offset,
+        "speaker_filter": speaker
+    })
+
+
 @transcript_api.route("/search/speaker")
 def search_by_speaker():
     """
