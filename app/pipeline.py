@@ -56,10 +56,10 @@ class EpisodePipeline:
         self.episode_repo = EpisodeRepository()
 
         # Load vocabulary hints from file and build initial_prompt for Whisper
-        vocabulary_hints = self._load_vocabulary(vocabulary_file)
+        self.vocabulary_hints = self._load_vocabulary(vocabulary_file)
         initial_prompt = None
-        if vocabulary_hints:
-            initial_prompt = "Names mentioned: " + ", ".join(vocabulary_hints) + "."
+        if self.vocabulary_hints:
+            initial_prompt = "Names mentioned: " + ", ".join(self.vocabulary_hints) + "."
         self.transcriber = get_transcriber(whisper_model, initial_prompt=initial_prompt)
 
         # Initialize diarizer if enabled

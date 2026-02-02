@@ -812,49 +812,28 @@ def test_update_segment_word_not_found(client):
 @pytest.mark.unit
 def test_get_episode_speakers_success(client):
     """Test getting speakers for a specific episode."""
-    episode_row = {
-        "id": 1,
-        "title": "Test Episode",
-        "patreon_id": "123"
-    }
-    speaker_rows = [
-        {"speaker": "SPEAKER_00", "word_count": 150},
-        {"speaker": "SPEAKER_01", "word_count": 100},
-        {"speaker": "Matt", "word_count": 50},
-    ]
-
     with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
         mock_ctx = MagicMock()
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
 
-        # Mock fetchone for episode check, then fetchall for speakers
-        mock_ctx.fetchone.return_value = episode_row
-        mock_ctx.fetchall.return_value = speaker_rows
+        # Mock fetchone for episode check returns the episode
+        mock_ctx.fetchone.return_value = {"id": 1}
+        # Mock fetchall for distinct speakers
+        mock_ctx.fetchall.return_value = [
+            {"speaker": "Matt"},
+            {"speaker": "Will"},
+            {"speaker": "Felix"}
+        ]
 
         response = client.get("/api/transcripts/episode/1/speakers")
         assert response.status_code == 200
         data = response.json
 
-        # Check episode info
-        assert data["episode_id"] == 1
-        assert data["episode_title"] == "Test Episode"
-        assert data["patreon_id"] == "123"
-
-        # Check speakers list
-        assert "speakers" in data
-        assert len(data["speakers"]) == 3
-
-        # Check mapped names
-        assert data["speakers"][0]["speaker"] == "SPEAKER_00"
-        assert data["speakers"][0]["mapped_name"] == "Matt"
-        assert data["speakers"][0]["word_count"] == 150
-
-        assert data["speakers"][1]["speaker"] == "SPEAKER_01"
-        assert data["speakers"][1]["mapped_name"] == "Will"
-
-        assert data["speakers"][2]["speaker"] == "Matt"
-        assert data["speakers"][2]["mapped_name"] == "Matt"
+        # Check response format matches current API
+        assert "known_speakers" in data
+        assert "episode_speakers" in data
+        assert data["episode_speakers"] == ["Matt", "Will", "Felix"]
 
 
 @pytest.mark.unit

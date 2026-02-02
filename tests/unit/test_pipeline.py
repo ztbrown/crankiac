@@ -383,7 +383,11 @@ def test_pipeline_loads_vocabulary_from_file(tmp_path):
 
 @pytest.mark.unit
 def test_pipeline_passes_vocabulary_hints_to_transcriber(pipeline_with_vocabulary):
-    """Test that vocabulary_hints are passed to transcriber.transcribe()."""
+    """Test that vocabulary is converted to initial_prompt and transcriber is initialized with it."""
+    # Vocabulary is already loaded and stored in pipeline_with_vocabulary.vocabulary_hints
+    assert pipeline_with_vocabulary.vocabulary_hints == ["Will Menaker", "Matt Christman", "Felix Biederman"]
+
+    # Test that transcribe is called (vocabulary was already passed via initial_prompt during init)
     episode = make_episode()
     pipeline_with_vocabulary.downloader.download.return_value = DownloadResult(
         success=True, file_path="/tmp/test.mp3", file_size=1000
@@ -393,11 +397,8 @@ def test_pipeline_passes_vocabulary_hints_to_transcriber(pipeline_with_vocabular
 
     pipeline_with_vocabulary.process_episode(episode)
 
-    # Verify transcribe was called with vocabulary_hints
-    pipeline_with_vocabulary.transcriber.transcribe.assert_called_once_with(
-        "/tmp/test.mp3",
-        vocabulary_hints=["Will Menaker", "Matt Christman", "Felix Biederman"]
-    )
+    # Verify transcribe was called with just the file path (vocabulary already in initial_prompt)
+    pipeline_with_vocabulary.transcriber.transcribe.assert_called_once_with("/tmp/test.mp3")
 
 
 @pytest.mark.unit

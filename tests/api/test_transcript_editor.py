@@ -96,17 +96,16 @@ class TestUpdateSpeaker:
             )
             segment_id = cursor.fetchone()['id']
 
-        # Update speaker
+        # Update speaker using correct format
         response = client.patch(
             '/api/transcripts/segments/speaker',
-            json={'segment_ids': [segment_id], 'speaker': 'NewSpeaker'}
+            json={'updates': [{'id': segment_id, 'speaker': 'NewSpeaker'}]}
         )
 
         assert response.status_code == 200
         data = response.get_json()
         assert data['updated'] == 1
-        assert data['segment_ids'] == [segment_id]
-        assert data['speaker'] == 'NewSpeaker'
+        assert data['requested'] == 1
 
         # Verify update in database
         with get_cursor(commit=False) as cursor:
@@ -126,16 +125,17 @@ class TestUpdateSpeaker:
             )
             segment_ids = [row['id'] for row in cursor.fetchall()]
 
-        # Update speaker for all
+        # Update speaker for all using correct format
+        updates = [{'id': seg_id, 'speaker': 'BulkSpeaker'} for seg_id in segment_ids]
         response = client.patch(
             '/api/transcripts/segments/speaker',
-            json={'segment_ids': segment_ids, 'speaker': 'BulkSpeaker'}
+            json={'updates': updates}
         )
 
         assert response.status_code == 200
         data = response.get_json()
         assert data['updated'] == 3
-        assert set(data['segment_ids']) == set(segment_ids)
+        assert data['requested'] == 3
 
         # Verify updates in database
         with get_cursor(commit=False) as cursor:
@@ -147,28 +147,43 @@ class TestUpdateSpeaker:
             assert all(s == 'BulkSpeaker' for s in speakers)
 
     def test_update_speaker_validation(self, client):
-        """Test that segment_ids and speaker are required."""
-        # Missing segment_ids
+        """Test that updates array is required and validated."""
+        # Missing updates
         response = client.patch(
             '/api/transcripts/segments/speaker',
             json={'speaker': 'Test'}
         )
         assert response.status_code == 400
 
-        # Missing speaker
+        # Updates not an array
         response = client.patch(
             '/api/transcripts/segments/speaker',
-            json={'segment_ids': [1, 2, 3]}
+            json={'updates': 'not an array'}
+        )
+        assert response.status_code == 400
+
+        # Update missing id
+        response = client.patch(
+            '/api/transcripts/segments/speaker',
+            json={'updates': [{'speaker': 'Test'}]}
+        )
+        assert response.status_code == 400
+
+        # Update missing speaker
+        response = client.patch(
+            '/api/transcripts/segments/speaker',
+            json={'updates': [{'id': 1}]}
         )
         assert response.status_code == 400
 
     def test_update_speaker_empty_list(self, client):
-        """Test that empty segment_ids list returns 0 updates."""
+        """Test that empty updates array returns error."""
         response = client.patch(
             '/api/transcripts/segments/speaker',
-            json={'segment_ids': [], 'speaker': 'Test'}
+            json={'updates': []}
         )
 
-        assert response.status_code == 200
+        # Empty updates array should return 400
+        assert response.status_code == 400
         data = response.get_json()
-        assert data['updated'] == 0
+        assert 'error' in data
