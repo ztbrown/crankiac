@@ -1,15 +1,18 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from decimal import Decimal
 from app.db.connection import get_cursor
 from app.db.models import TranscriptSegment
-from app.transcription.whisper_transcriber import TranscriptResult, WordSegment
+
+# Lazy import to avoid loading whisper in production API
+if TYPE_CHECKING:
+    from app.transcription.whisper_transcriber import TranscriptResult, WordSegment
 
 BATCH_SIZE = 1000
 
 class TranscriptStorage:
     """Stores transcripts in PostgreSQL with batch inserts."""
 
-    def store_transcript(self, episode_id: int, result: TranscriptResult) -> int:
+    def store_transcript(self, episode_id: int, result: "TranscriptResult") -> int:
         """
         Store a transcript result for an episode.
 
@@ -20,6 +23,9 @@ class TranscriptStorage:
         Returns:
             Number of segments stored.
         """
+        # Import here to avoid loading whisper in production API
+        from app.transcription.whisper_transcriber import TranscriptResult
+
         segments = [
             TranscriptSegment(
                 id=None,
