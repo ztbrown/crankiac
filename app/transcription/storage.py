@@ -446,22 +446,39 @@ class TranscriptStorage:
         """
         with get_cursor() as cursor:
             # Get the segment indices for the range
-            cursor.execute(
-                """
-                SELECT segment_index
-                FROM transcript_segments
-                WHERE id IN (%s, %s) AND episode_id = %s
-                ORDER BY segment_index
-                """,
-                (start_segment_id, end_segment_id, episode_id)
-            )
-            rows = cursor.fetchall()
+            # Handle both single word (start == end) and range selections
+            if start_segment_id == end_segment_id:
+                # Single word selection
+                cursor.execute(
+                    """
+                    SELECT segment_index
+                    FROM transcript_segments
+                    WHERE id = %s AND episode_id = %s
+                    """,
+                    (start_segment_id, episode_id)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return 0
+                start_index = end_index = row["segment_index"]
+            else:
+                # Range selection
+                cursor.execute(
+                    """
+                    SELECT segment_index
+                    FROM transcript_segments
+                    WHERE id IN (%s, %s) AND episode_id = %s
+                    ORDER BY segment_index
+                    """,
+                    (start_segment_id, end_segment_id, episode_id)
+                )
+                rows = cursor.fetchall()
 
-            if len(rows) != 2:
-                return 0
+                if len(rows) != 2:
+                    return 0
 
-            start_index = rows[0]["segment_index"]
-            end_index = rows[1]["segment_index"]
+                start_index = rows[0]["segment_index"]
+                end_index = rows[1]["segment_index"]
 
             # Update all segments in the range
             cursor.execute(

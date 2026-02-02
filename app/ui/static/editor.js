@@ -302,7 +302,7 @@ class TranscriptEditor {
         const range = selection.getRangeAt(0);
         const selectedText = selection.toString().trim();
 
-        if (!selectedText || selectedText.length < 2) {
+        if (!selectedText || selectedText.length < 1) {
             return;
         }
 
