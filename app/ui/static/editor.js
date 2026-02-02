@@ -5,6 +5,7 @@ class TranscriptEditor {
         this.speakers = [];
         this.selectedRange = null;
         this.currentSelection = null;
+        this.mode = "speaker"; // "speaker" or "edit"
 
         this.initializeElements();
         this.attachEventListeners();
@@ -28,6 +29,8 @@ class TranscriptEditor {
         this.selectedTextPreview = document.getElementById("selected-text-preview");
         this.cancelSpeakerBtn = document.getElementById("cancel-speaker-btn");
         this.assignSpeakerBtn = document.getElementById("assign-speaker-btn");
+        this.modeSpeakerBtn = document.getElementById("mode-speaker");
+        this.modeEditBtn = document.getElementById("mode-edit");
     }
 
     attachEventListeners() {
@@ -38,6 +41,8 @@ class TranscriptEditor {
         this.dialogOverlay.addEventListener("click", () => this.closeSpeakerDialog());
         this.speakerInput.addEventListener("input", () => this.handleSpeakerInput());
         this.speakerInput.addEventListener("keydown", (e) => this.handleSpeakerInputKeydown(e));
+        this.modeSpeakerBtn.addEventListener("click", () => this.setMode("speaker"));
+        this.modeEditBtn.addEventListener("click", () => this.setMode("edit"));
 
         // Handle text selection
         document.addEventListener("mouseup", () => this.handleTextSelection());
@@ -120,6 +125,22 @@ class TranscriptEditor {
         });
     }
 
+    setMode(mode) {
+        this.mode = mode;
+
+        // Update button states
+        this.modeSpeakerBtn.classList.toggle("active", mode === "speaker");
+        this.modeEditBtn.classList.toggle("active", mode === "edit");
+
+        // Update container class for styling
+        this.transcriptContainer.dataset.mode = mode;
+
+        // Re-render if we have a transcript loaded
+        if (this.currentEpisodeId) {
+            this.renderTranscript();
+        }
+    }
+
     async handleEpisodeChange() {
         const episodeId = parseInt(this.episodeSelect.value);
         if (!episodeId) {
@@ -155,6 +176,7 @@ class TranscriptEditor {
 
     renderTranscript() {
         this.transcriptContainer.innerHTML = "";
+        this.transcriptContainer.dataset.mode = this.mode;
 
         this.paragraphs.forEach((paragraph, index) => {
             const paragraphDiv = document.createElement("div");
@@ -169,30 +191,40 @@ class TranscriptEditor {
             textDiv.className = "paragraph-text";
             textDiv.dataset.paragraphIndex = index;
 
-            // Split text into words and wrap each with segment IDs
-            const words = paragraph.text.split(" ");
-            const segmentIds = paragraph.segment_ids;
+            if (this.mode === "edit") {
+                // Edit mode: make entire paragraph editable
+                textDiv.contentEditable = "true";
+                textDiv.spellcheck = false;
+                textDiv.textContent = paragraph.text;
+                textDiv.dataset.originalText = paragraph.text;
+                textDiv.dataset.segmentIds = JSON.stringify(paragraph.segment_ids);
 
-            words.forEach((word, wordIndex) => {
-                const span = document.createElement("span");
-                span.className = "word";
-                span.contentEditable = "true";
-                span.spellcheck = false;
-                span.textContent = word;
-                span.dataset.segmentId = segmentIds[wordIndex] || segmentIds[segmentIds.length - 1];
-                span.dataset.originalWord = word;
+                // Add event listeners for paragraph editing
+                textDiv.addEventListener("blur", (e) => this.handleParagraphBlur(e, paragraph));
+                textDiv.addEventListener("keydown", (e) => {
+                    if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.target.textContent = e.target.dataset.originalText;
+                        e.target.blur();
+                    }
+                });
+            } else {
+                // Speaker mode: wrap words in spans for selection
+                const words = paragraph.text.split(" ");
+                const segmentIds = paragraph.segment_ids;
 
-                // Add event listeners for editing
-                span.addEventListener("focus", (e) => this.handleWordFocus(e));
-                span.addEventListener("blur", (e) => this.handleWordBlur(e));
-                span.addEventListener("keydown", (e) => this.handleWordKeydown(e));
+                words.forEach((word, wordIndex) => {
+                    const span = document.createElement("span");
+                    span.className = "word";
+                    span.textContent = word;
+                    span.dataset.segmentId = segmentIds[wordIndex] || segmentIds[segmentIds.length - 1];
+                    textDiv.appendChild(span);
 
-                textDiv.appendChild(span);
-
-                if (wordIndex < words.length - 1) {
-                    textDiv.appendChild(document.createTextNode(" "));
-                }
-            });
+                    if (wordIndex < words.length - 1) {
+                        textDiv.appendChild(document.createTextNode(" "));
+                    }
+                });
+            }
 
             paragraphDiv.appendChild(speakerLabel);
             paragraphDiv.appendChild(textDiv);
@@ -200,69 +232,68 @@ class TranscriptEditor {
         });
     }
 
-    handleWordFocus(e) {
-        const span = e.target;
-        span.dataset.originalWord = span.textContent;
-        span.classList.add("editing");
-    }
+    async handleParagraphBlur(e, paragraph) {
+        const textDiv = e.target;
+        const newText = textDiv.textContent.trim();
+        const originalText = textDiv.dataset.originalText;
 
-    handleWordBlur(e) {
-        const span = e.target;
-        span.classList.remove("editing");
-
-        const newWord = span.textContent.trim();
-        const originalWord = span.dataset.originalWord;
-        const segmentId = parseInt(span.dataset.segmentId);
-
-        if (newWord && newWord !== originalWord) {
-            this.updateWord(segmentId, newWord, span);
-        } else if (!newWord) {
-            // Restore original if empty
-            span.textContent = originalWord;
+        if (!newText || newText === originalText) {
+            textDiv.textContent = originalText;
+            return;
         }
-    }
 
-    handleWordKeydown(e) {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            e.target.blur();
-        } else if (e.key === "Escape") {
-            e.preventDefault();
-            e.target.textContent = e.target.dataset.originalWord;
-            e.target.blur();
-        }
-    }
-
-    async updateWord(segmentId, newWord, span) {
-        span.classList.add("saving");
+        textDiv.classList.add("saving");
 
         try {
-            const response = await fetch(`/api/transcripts/segments/${segmentId}/word`, {
-                method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ word: newWord })
-            });
+            // Split new text into words
+            const newWords = newText.split(/\s+/);
+            const segmentIds = JSON.parse(textDiv.dataset.segmentIds);
 
-            if (!response.ok) {
-                throw new Error("Failed to update word");
+            // Update each word in the paragraph
+            const updates = [];
+            for (let i = 0; i < Math.min(newWords.length, segmentIds.length); i++) {
+                const segmentId = segmentIds[i];
+                const newWord = newWords[i];
+
+                const response = await fetch(`/api/transcripts/segments/${segmentId}/word`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ word: newWord })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to update word at position ${i}`);
+                }
+                updates.push({ segmentId, word: newWord });
             }
 
-            span.dataset.originalWord = newWord;
-            span.classList.remove("saving");
-            span.classList.add("saved");
-            setTimeout(() => span.classList.remove("saved"), 2000);
+            textDiv.dataset.originalText = newText;
+            textDiv.classList.remove("saving");
+            textDiv.classList.add("saved");
+            setTimeout(() => textDiv.classList.remove("saved"), 2000);
+
+            this.showToast(`Updated ${updates.length} words`, "success");
+
+            // Reload transcript to reflect changes
+            await this.loadTranscript(this.currentEpisodeId);
+
         } catch (error) {
-            span.classList.remove("saving");
-            span.classList.add("error");
-            span.textContent = span.dataset.originalWord;
-            this.showToast("Failed to update word: " + error.message, "error");
-            setTimeout(() => span.classList.remove("error"), 2000);
+            textDiv.classList.remove("saving");
+            textDiv.classList.add("error");
+            textDiv.textContent = originalText;
+            this.showToast("Failed to update text: " + error.message, "error");
+            setTimeout(() => textDiv.classList.remove("error"), 2000);
         }
     }
 
     handleTextSelection() {
+        // Only handle text selection in speaker mode
+        if (this.mode !== "speaker") {
+            return;
+        }
+
         const selection = window.getSelection();
         if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
             return;

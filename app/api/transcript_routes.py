@@ -130,7 +130,7 @@ def search_single_word(
                 ts.start_time,
                 ts.end_time,
                 ts.segment_index,
-                ts.speaker,
+                COALESCE(s.name, ts.speaker) as speaker,
                 e.id as episode_id,
                 e.title as episode_title,
                 e.patreon_id,
@@ -145,6 +145,7 @@ def search_single_word(
                 ) as context
             FROM transcript_segments ts
             JOIN episodes e ON ts.episode_id = e.id
+            LEFT JOIN speakers s ON ts.speaker_id = s.id
             WHERE ts.word ILIKE %s{filter_clause}
             ORDER BY e.published_at DESC, ts.start_time
             LIMIT %s OFFSET %s
@@ -343,8 +344,9 @@ def get_extended_context():
                 ts.segment_index,
                 ts.start_time,
                 ts.end_time,
-                ts.speaker
+                COALESCE(s.name, ts.speaker) as speaker
             FROM transcript_segments ts
+            LEFT JOIN speakers s ON ts.speaker_id = s.id
             WHERE ts.episode_id = %s
             AND ts.segment_index BETWEEN %s AND %s
             ORDER BY ts.segment_index

@@ -83,6 +83,50 @@ body {
     border-color: #0066cc;
 }
 
+.mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mode-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+}
+
+.toggle-buttons {
+    display: flex;
+    gap: 0;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.mode-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    background: white;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mode-btn:not(:last-child) {
+    border-right: 1px solid #ddd;
+}
+
+.mode-btn:hover {
+    background: #f8f9fa;
+}
+
+.mode-btn.active {
+    background: #0066cc;
+    color: white;
+}
+
 .episode-info {
     display: flex;
     flex-direction: column;
@@ -194,42 +238,42 @@ body {
     user-select: text;
 }
 
-.paragraph-text .word {
+/* Speaker mode - individual word spans */
+.transcript-container[data-mode="speaker"] .paragraph-text .word {
     display: inline;
-    padding: 2px 4px;
-    margin: -2px -4px;
-    border-radius: 3px;
+}
+
+/* Edit mode - entire paragraph editable */
+.transcript-container[data-mode="edit"] .paragraph-text {
+    padding: 8px 12px;
+    margin: -8px -12px;
+    border-radius: 6px;
     transition: all 0.2s;
-    cursor: text;
+    min-height: 32px;
 }
 
-.paragraph-text .word:hover {
-    background: #f0f0f0;
+.transcript-container[data-mode="edit"] .paragraph-text:hover {
+    background: #f8f9fa;
 }
 
-.paragraph-text .word:focus {
+.transcript-container[data-mode="edit"] .paragraph-text:focus {
     outline: 2px solid #0066cc;
     outline-offset: 2px;
     background: white;
 }
 
-.paragraph-text .word.editing {
-    background: #fffbf0;
-    outline: 2px solid #ffb84d;
-}
-
-.paragraph-text .word.saving {
+.transcript-container[data-mode="edit"] .paragraph-text.saving {
     background: #f0f8ff;
     outline: 2px solid #0066cc;
     opacity: 0.7;
 }
 
-.paragraph-text .word.saved {
+.transcript-container[data-mode="edit"] .paragraph-text.saved {
     background: #e8f5e9;
     outline: 2px solid #4caf50;
 }
 
-.paragraph-text .word.error {
+.transcript-container[data-mode="edit"] .paragraph-text.error {
     background: #ffebee;
     outline: 2px solid #f44336;
 }
