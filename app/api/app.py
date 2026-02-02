@@ -5,6 +5,7 @@ from flask_cors import CORS
 from app.api.routes import api
 from app.api.transcript_routes import transcript_api
 from app.api.audio_routes import audio_api
+from app.api.admin_routes import admin_api
 from app.data.database import init_db
 from app.config import Config
 
@@ -48,6 +49,7 @@ def create_app():
     app.register_blueprint(api)
     app.register_blueprint(transcript_api)
     app.register_blueprint(audio_api)
+    app.register_blueprint(admin_api)
 
     # Serve the UI
     @app.route("/")
