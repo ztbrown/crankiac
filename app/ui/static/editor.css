@@ -86,15 +86,16 @@ body {
 .mode-toggle {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 12px;
     position: sticky;
     top: 20px;
     z-index: 100;
     background: white;
-    padding: 12px 16px;
+    padding: 12px 20px;
+    margin: 0 0 20px 0;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    margin-left: auto;
 }
 
 .mode-label {
