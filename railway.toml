@@ -5,6 +5,6 @@ builder = "nixpacks"
 cmds = ["python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements-prod.txt"]
 
 [deploy]
-startCommand = "gunicorn 'app.api.app:create_app()' --bind 0.0.0.0:$PORT"
+startCommand = "python3 manage.py migrate && gunicorn 'app.api.app:create_app()' --bind 0.0.0.0:$PORT"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 30
