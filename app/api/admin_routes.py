@@ -38,24 +38,24 @@ def requires_auth(f):
 @requires_auth
 def cleanup_episodes():
     """Delete all episodes except 1003-1006. ONE-TIME USE ONLY."""
-    keep_episodes = [1003, 1004, 1005, 1006]
+    keep_episodes = ["1003", "1004", "1005", "1006"]
 
     # Check what we're keeping
     with get_cursor(commit=False) as cursor:
         placeholders = ",".join(["%s"] * len(keep_episodes))
         cursor.execute(
             f"""
-            SELECT id, episode_number, title
+            SELECT id, patreon_id, title
             FROM episodes
-            WHERE episode_number IN ({placeholders})
-            ORDER BY episode_number
+            WHERE patreon_id IN ({placeholders})
+            ORDER BY patreon_id
             """,
             keep_episodes
         )
 
         keep_eps = cursor.fetchall()
         keep_info = [
-            {"id": ep["id"], "episode_number": ep["episode_number"], "title": ep["title"]}
+            {"id": ep["id"], "patreon_id": ep["patreon_id"], "title": ep["title"]}
             for ep in keep_eps
         ]
 
@@ -65,7 +65,7 @@ def cleanup_episodes():
             f"""
             SELECT COUNT(*) as count
             FROM episodes
-            WHERE episode_number IS NULL OR episode_number NOT IN ({placeholders})
+            WHERE patreon_id NOT IN ({placeholders})
             """,
             keep_episodes
         )
@@ -84,7 +84,7 @@ def cleanup_episodes():
         cursor.execute(
             f"""
             DELETE FROM episodes
-            WHERE episode_number IS NULL OR episode_number NOT IN ({placeholders})
+            WHERE patreon_id NOT IN ({placeholders})
             """,
             keep_episodes
         )
