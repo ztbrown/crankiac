@@ -277,3 +277,195 @@ class TranscriptStorage:
                 (new_word.strip(), segment_id)
             )
             return cursor.rowcount > 0
+
+    def get_all_speakers(self, search: Optional[str] = None) -> list[dict]:
+        """
+        Get all speakers from the speakers table, optionally filtered by search term.
+
+        Args:
+            search: Optional search term for autocomplete (case-insensitive partial match).
+
+        Returns:
+            List of speaker dicts with id and name.
+        """
+        with get_cursor(commit=False) as cursor:
+            if search:
+                cursor.execute(
+                    """
+                    SELECT id, name, created_at
+                    FROM speakers
+                    WHERE name ILIKE %s
+                    ORDER BY name
+                    """,
+                    (f"%{search}%",)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, name, created_at
+                    FROM speakers
+                    ORDER BY name
+                    """
+                )
+
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None
+                }
+                for row in rows
+            ]
+
+    def create_speaker(self, name: str) -> Optional[dict]:
+        """
+        Create a new speaker in the speakers table.
+
+        Args:
+            name: Speaker name (must be unique).
+
+        Returns:
+            Dict with id, name, and created_at if successful, None if speaker already exists.
+        """
+        if not name or not name.strip():
+            return None
+
+        name = name.strip()
+
+        with get_cursor() as cursor:
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO speakers (name)
+                    VALUES (%s)
+                    RETURNING id, name, created_at
+                    """,
+                    (name,)
+                )
+                row = cursor.fetchone()
+                return {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None
+                }
+            except Exception:
+                # Speaker already exists (UNIQUE constraint violation)
+                return None
+
+    def get_episode_paragraphs(self, episode_id: int) -> list[dict]:
+        """
+        Get transcript segments grouped by speaker turns (paragraphs).
+        A new paragraph starts when the speaker changes.
+
+        Args:
+            episode_id: Database ID of the episode.
+
+        Returns:
+            List of paragraph dicts with speaker, text, start_time, end_time, segment_ids.
+        """
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    ts.id,
+                    ts.word,
+                    ts.start_time,
+                    ts.end_time,
+                    ts.segment_index,
+                    ts.speaker,
+                    s.name as speaker_name
+                FROM transcript_segments ts
+                LEFT JOIN speakers s ON ts.speaker_id = s.id
+                WHERE ts.episode_id = %s
+                ORDER BY ts.segment_index
+                """,
+                (episode_id,)
+            )
+
+            rows = cursor.fetchall()
+
+            if not rows:
+                return []
+
+            # Group consecutive segments by speaker into paragraphs
+            paragraphs = []
+            current_paragraph = None
+
+            for row in rows:
+                speaker = row["speaker_name"] or row["speaker"] or "Unknown Speaker"
+
+                # Start new paragraph if speaker changed or this is the first segment
+                if current_paragraph is None or current_paragraph["speaker"] != speaker:
+                    if current_paragraph:
+                        paragraphs.append(current_paragraph)
+
+                    current_paragraph = {
+                        "speaker": speaker,
+                        "text": row["word"],
+                        "start_time": float(row["start_time"]),
+                        "end_time": float(row["end_time"]),
+                        "segment_ids": [row["id"]]
+                    }
+                else:
+                    # Add to current paragraph
+                    current_paragraph["text"] += " " + row["word"]
+                    current_paragraph["end_time"] = float(row["end_time"])
+                    current_paragraph["segment_ids"].append(row["id"])
+
+            # Add the last paragraph
+            if current_paragraph:
+                paragraphs.append(current_paragraph)
+
+            return paragraphs
+
+    def assign_speaker_to_range(
+        self,
+        episode_id: int,
+        start_segment_id: int,
+        end_segment_id: int,
+        speaker_id: int
+    ) -> int:
+        """
+        Assign a speaker to a range of segments.
+
+        Args:
+            episode_id: Database ID of the episode.
+            start_segment_id: First segment ID in the range.
+            end_segment_id: Last segment ID in the range.
+            speaker_id: Speaker ID from speakers table.
+
+        Returns:
+            Number of segments updated.
+        """
+        with get_cursor() as cursor:
+            # Get the segment indices for the range
+            cursor.execute(
+                """
+                SELECT segment_index
+                FROM transcript_segments
+                WHERE id IN (%s, %s) AND episode_id = %s
+                ORDER BY segment_index
+                """,
+                (start_segment_id, end_segment_id, episode_id)
+            )
+            rows = cursor.fetchall()
+
+            if len(rows) != 2:
+                return 0
+
+            start_index = rows[0]["segment_index"]
+            end_index = rows[1]["segment_index"]
+
+            # Update all segments in the range
+            cursor.execute(
+                """
+                UPDATE transcript_segments
+                SET speaker_id = %s
+                WHERE episode_id = %s
+                AND segment_index BETWEEN %s AND %s
+                """,
+                (speaker_id, episode_id, start_index, end_index)
+            )
+
+            return cursor.rowcount

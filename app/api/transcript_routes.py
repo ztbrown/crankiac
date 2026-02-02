@@ -491,47 +491,54 @@ def list_episodes():
 @transcript_api.route("/speakers")
 def list_speakers():
     """
-    List all unique speakers across all episodes or for a specific episode.
+    List all speakers from the speakers table.
 
     Query params:
-        episode_id: Optional episode ID to filter by
+        q: Optional search term for autocomplete (case-insensitive partial match)
+        episode_id: Optional episode ID to get speaker stats for that episode
 
     Returns:
-        JSON with list of speaker names and their word counts.
+        JSON with list of speakers. If episode_id provided, includes word_count per speaker.
+        Otherwise returns all speakers from speakers table with id, name, created_at.
     """
+    from app.transcription.storage import TranscriptStorage
+
+    search = request.args.get("q", "").strip() or None
     episode_id = request.args.get("episode_id", type=int)
 
-    with get_cursor(commit=False) as cursor:
-        if episode_id:
+    # If episode_id is provided, get speaker stats for that episode
+    if episode_id:
+        with get_cursor(commit=False) as cursor:
             cursor.execute(
                 """
-                SELECT speaker, COUNT(*) as word_count
-                FROM transcript_segments
-                WHERE episode_id = %s AND speaker IS NOT NULL
-                GROUP BY speaker
+                SELECT s.id, s.name, COUNT(*) as word_count
+                FROM transcript_segments ts
+                JOIN speakers s ON ts.speaker_id = s.id
+                WHERE ts.episode_id = %s
+                GROUP BY s.id, s.name
                 ORDER BY word_count DESC
                 """,
                 (episode_id,)
             )
-        else:
-            cursor.execute(
-                """
-                SELECT speaker, COUNT(*) as word_count
-                FROM transcript_segments
-                WHERE speaker IS NOT NULL
-                GROUP BY speaker
-                ORDER BY word_count DESC
-                """
-            )
 
-        speakers = []
-        for row in cursor.fetchall():
-            speakers.append({
-                "speaker": row["speaker"],
-                "word_count": row["word_count"]
-            })
+            speakers = []
+            for row in cursor.fetchall():
+                speakers.append({
+                    "id": row["id"],
+                    "name": row["name"],
+                    "word_count": row["word_count"]
+                })
 
-        return jsonify({"speakers": speakers})
+            return jsonify({"speakers": speakers, "total": len(speakers)})
+
+    # Otherwise, get all speakers with optional search filter
+    storage = TranscriptStorage()
+    speakers = storage.get_all_speakers(search=search)
+
+    return jsonify({
+        "speakers": speakers,
+        "total": len(speakers)
+    })
 
 
 @transcript_api.route("/on-this-day")
@@ -964,4 +971,140 @@ def update_segment_word(segment_id: int):
         "id": segment_id,
         "word": new_word,
         "updated": True
+    })
+
+
+# Speaker management endpoints
+
+@transcript_api.route("/speakers", methods=["POST"])
+def create_speaker():
+    """
+    Create a new speaker.
+
+    Request body:
+        {
+            "name": "Speaker Name"
+        }
+
+    Returns:
+        JSON with created speaker info or error if speaker already exists.
+    """
+    from app.transcription.storage import TranscriptStorage
+
+    data = request.get_json()
+    if not data or "name" not in data:
+        return jsonify({"error": "name field required in request body"}), 400
+
+    name = data["name"]
+    if not isinstance(name, str):
+        return jsonify({"error": "name must be a string"}), 400
+
+    name = name.strip()
+    if not name:
+        return jsonify({"error": "name cannot be empty"}), 400
+
+    if len(name) > 100:
+        return jsonify({"error": "name too long (max 100 characters)"}), 400
+
+    storage = TranscriptStorage()
+    speaker = storage.create_speaker(name)
+
+    if not speaker:
+        return jsonify({"error": "Speaker already exists"}), 409
+
+    return jsonify(speaker), 201
+
+
+@transcript_api.route("/episode/<int:episode_id>/paragraphs", methods=["GET"])
+def get_episode_paragraphs(episode_id: int):
+    """
+    Get transcript segments grouped by speaker turns (paragraphs).
+    A new paragraph starts when the speaker changes.
+
+    Returns:
+        JSON with list of paragraphs, each containing:
+            - speaker: Speaker name (or "Unknown Speaker")
+            - text: Complete paragraph text
+            - start_time: Start time of first word in paragraph
+            - end_time: End time of last word in paragraph
+            - segment_ids: List of segment IDs that make up this paragraph
+    """
+    from app.transcription.storage import TranscriptStorage
+
+    # Verify episode exists
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            "SELECT id, title FROM episodes WHERE id = %s",
+            (episode_id,)
+        )
+        episode = cursor.fetchone()
+
+    if not episode:
+        return jsonify({"error": "Episode not found"}), 404
+
+    storage = TranscriptStorage()
+    paragraphs = storage.get_episode_paragraphs(episode_id)
+
+    return jsonify({
+        "episode_id": episode_id,
+        "episode_title": episode["title"],
+        "paragraphs": paragraphs,
+        "total": len(paragraphs)
+    })
+
+
+@transcript_api.route("/assign-speaker", methods=["PATCH"])
+def assign_speaker():
+    """
+    Assign a speaker to a range of transcript segments.
+    This is used when a user selects text in the paragraph editor
+    and assigns a speaker, which splits paragraphs.
+
+    Request body:
+        {
+            "episode_id": 123,
+            "start_segment_id": 456,
+            "end_segment_id": 789,
+            "speaker_id": 2
+        }
+
+    Returns:
+        JSON with number of segments updated.
+    """
+    from app.transcription.storage import TranscriptStorage
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    required_fields = ["episode_id", "start_segment_id", "end_segment_id", "speaker_id"]
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"error": f"{field} field required"}), 400
+        if not isinstance(data[field], int):
+            return jsonify({"error": f"{field} must be an integer"}), 400
+
+    episode_id = data["episode_id"]
+    start_segment_id = data["start_segment_id"]
+    end_segment_id = data["end_segment_id"]
+    speaker_id = data["speaker_id"]
+
+    # Verify speaker exists
+    with get_cursor(commit=False) as cursor:
+        cursor.execute("SELECT id FROM speakers WHERE id = %s", (speaker_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": "Speaker not found"}), 404
+
+    storage = TranscriptStorage()
+    updated = storage.assign_speaker_to_range(
+        episode_id, start_segment_id, end_segment_id, speaker_id
+    )
+
+    if updated == 0:
+        return jsonify({"error": "No segments found in range"}), 404
+
+    return jsonify({
+        "updated": updated,
+        "episode_id": episode_id,
+        "speaker_id": speaker_id
     })

@@ -21,32 +21,9 @@
                 </select>
             </div>
 
-            <div class="control-group">
-                <label for="speaker-filter">Filter by speaker:</label>
-                <select id="speaker-filter" class="speaker-filter">
-                    <option value="">All speakers</option>
-                </select>
-            </div>
-
             <div class="episode-info">
                 <span id="episode-title" class="episode-title"></span>
-                <span id="segment-count" class="segment-count"></span>
-            </div>
-        </div>
-
-        <div class="bulk-edit-toolbar">
-            <div class="toolbar-section">
-                <input type="checkbox" id="select-all" class="select-all-checkbox">
-                <label for="select-all" class="select-all-label">Select All</label>
-                <span id="selection-count" class="selection-count"></span>
-            </div>
-
-            <div class="toolbar-section">
-                <label for="bulk-speaker-select">Change speaker to:</label>
-                <select id="bulk-speaker-select" class="bulk-speaker-select">
-                    <option value="">-- Select speaker --</option>
-                </select>
-                <button id="apply-speaker-btn" class="btn btn-primary" disabled>Apply to Selected</button>
+                <span id="paragraph-count" class="paragraph-count"></span>
             </div>
         </div>
 
@@ -63,33 +40,40 @@
             <button id="error-dismiss" class="btn btn-secondary">Dismiss</button>
         </div>
 
-        <div class="table-container">
-            <table id="segments-table" class="segments-table">
-                <thead>
-                    <tr>
-                        <th class="col-checkbox">
-                            <span class="sr-only">Select</span>
-                        </th>
-                        <th class="col-time">Time</th>
-                        <th class="col-speaker">Speaker</th>
-                        <th class="col-word">Word</th>
-                        <th class="col-actions">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="segments-body">
-                    <!-- Segments will be inserted here dynamically -->
-                </tbody>
-            </table>
-        </div>
-
-        <div class="pagination-controls">
-            <button id="prev-page-btn" class="btn btn-secondary" disabled>← Previous</button>
-            <span id="page-info" class="page-info">Page 1 of 1</span>
-            <button id="next-page-btn" class="btn btn-secondary" disabled>Next →</button>
+        <div id="transcript-container" class="transcript-container">
+            <!-- Paragraphs will be inserted here dynamically -->
         </div>
     </div>
 
-    <!-- Toast notification (will be created dynamically) -->
+    <!-- Speaker assignment dialog -->
+    <div id="speaker-dialog" class="speaker-dialog" style="display: none;">
+        <div class="speaker-dialog-content">
+            <h3>Assign Speaker</h3>
+            <p class="selected-text-preview" id="selected-text-preview"></p>
+
+            <div class="form-group">
+                <label for="speaker-input">Speaker:</label>
+                <input
+                    type="text"
+                    id="speaker-input"
+                    class="speaker-input"
+                    placeholder="Type speaker name..."
+                    autocomplete="off"
+                >
+                <div id="speaker-suggestions" class="speaker-suggestions"></div>
+            </div>
+
+            <div class="dialog-actions">
+                <button id="cancel-speaker-btn" class="btn btn-secondary">Cancel</button>
+                <button id="assign-speaker-btn" class="btn btn-primary" disabled>Assign Speaker</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay for dialog -->
+    <div id="dialog-overlay" class="dialog-overlay" style="display: none;"></div>
+
+    <!-- Toast notification -->
     <div id="toast-container" class="toast-container"></div>
 
     <script src="/static/version.js"></script>
