@@ -1,11 +1,36 @@
 import os
-from flask import Flask
+from functools import wraps
+from flask import Flask, request, Response
 from flask_cors import CORS
 from app.api.routes import api
 from app.api.transcript_routes import transcript_api
 from app.api.audio_routes import audio_api
 from app.data.database import init_db
 from app.config import Config
+
+def check_auth(username, password):
+    """Check if username and password match environment variables."""
+    expected_username = os.environ.get("EDITOR_USERNAME", "admin")
+    expected_password = os.environ.get("EDITOR_PASSWORD", "changeme")
+    return username == expected_username and password == expected_password
+
+def authenticate():
+    """Send a 401 response that enables HTTP Basic Auth."""
+    return Response(
+        'Authentication required. Please provide valid credentials.',
+        401,
+        {'WWW-Authenticate': 'Basic realm="Editor Login Required"'}
+    )
+
+def requires_auth(f):
+    """Decorator to require HTTP Basic Auth for a route."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 def create_app():
     # Debug: log DATABASE_URL on startup
@@ -30,6 +55,7 @@ def create_app():
         return app.send_static_file("index.html")
 
     @app.route("/editor")
+    @requires_auth
     def editor():
         return app.send_static_file("editor.html")
 
