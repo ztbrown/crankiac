@@ -460,6 +460,82 @@ def backfill_is_free(args):
         print(f"Updated {updated} episodes: set is_free=TRUE where youtube_url was set")
 
 
+def cleanup_episodes(args):
+    """Delete all episodes except specified episode numbers."""
+    from app.db.connection import get_cursor
+
+    keep_episodes = args.keep
+    if not keep_episodes:
+        print("ERROR: No episodes specified to keep")
+        print("Usage: python manage.py cleanup-episodes --keep 1003,1004,1005,1006")
+        sys.exit(1)
+
+    # Parse episode numbers
+    episode_numbers = [int(n.strip()) for n in keep_episodes.split(",")]
+
+    print(f"Checking episodes to keep: {episode_numbers}")
+    with get_cursor(commit=False) as cursor:
+        placeholders = ",".join(["%s"] * len(episode_numbers))
+        cursor.execute(
+            f"""
+            SELECT id, episode_number, title
+            FROM episodes
+            WHERE episode_number IN ({placeholders})
+            ORDER BY episode_number
+            """,
+            episode_numbers
+        )
+
+        keep_eps = cursor.fetchall()
+        print(f"\nFound {len(keep_eps)} episodes to keep:")
+        for ep in keep_eps:
+            print(f"  Keep: Episode {ep['episode_number']} - {ep['title']}")
+
+    print("\nCounting episodes to delete...")
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) as count
+            FROM episodes
+            WHERE episode_number IS NULL OR episode_number NOT IN ({placeholders})
+            """,
+            episode_numbers
+        )
+
+        delete_count = cursor.fetchone()['count']
+        print(f"Episodes to DELETE: {delete_count}")
+
+    if delete_count == 0:
+        print("No episodes to delete. Exiting.")
+        return
+
+    if not args.confirm:
+        print("\n⚠️  DRY RUN MODE - No changes will be made")
+        print("Add --confirm to actually delete episodes")
+        return
+
+    print("\n⚠️  DELETING EPISODES...")
+    with get_cursor() as cursor:
+        cursor.execute(
+            f"""
+            DELETE FROM episodes
+            WHERE episode_number IS NULL OR episode_number NOT IN ({placeholders})
+            """,
+            episode_numbers
+        )
+
+        deleted = cursor.rowcount
+        print(f"✅ Deleted {deleted} episodes")
+
+    print("\nVerifying...")
+    with get_cursor(commit=False) as cursor:
+        cursor.execute("SELECT COUNT(*) as count FROM episodes")
+        remaining = cursor.fetchone()['count']
+        print(f"✅ Remaining episodes: {remaining}")
+
+    print("\n✅ Done!")
+
+
 def youtube_align(args):
     """Align Patreon transcripts with YouTube captions to compute timestamp offsets."""
     from app.db.connection import get_cursor
@@ -611,6 +687,11 @@ def main():
     align_parser.add_argument("--force", action="store_true", help="Re-align episodes that already have anchors")
     align_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed alignment info")
 
+    # cleanup-episodes command
+    cleanup_parser = subparsers.add_parser("cleanup-episodes", help="Delete all episodes except specified ones")
+    cleanup_parser.add_argument("--keep", required=True, help="Comma-separated episode numbers to keep (e.g., 1003,1004,1005,1006)")
+    cleanup_parser.add_argument("--confirm", action="store_true", help="Actually delete (without this, runs in dry-run mode)")
+
     args = parser.parse_args()
 
     if args.command == "migrate":
@@ -629,6 +710,8 @@ def main():
         backfill_is_free(args)
     elif args.command == "youtube-align":
         youtube_align(args)
+    elif args.command == "cleanup-episodes":
+        cleanup_episodes(args)
     else:
         parser.print_help()
         sys.exit(1)
