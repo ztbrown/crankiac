@@ -1,4 +1,4 @@
-const FRONTEND_VERSION = "0.1.0";
+const FRONTEND_VERSION = "0.2.0";
 
 async function fetchBackendVersion() {
     try {
