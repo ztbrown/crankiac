@@ -172,9 +172,11 @@ def test_update_segment_speakers_partial_update(client):
             segment_id = cursor.fetchone()["id"]
 
         # Try to update one existing and one non-existing segment
+        # Use a very large ID that's guaranteed not to exist
+        non_existent_id = 999999999
         updates = [
             {"id": segment_id, "speaker": "Matt"},
-            {"id": 999999, "speaker": "Will"},  # This ID doesn't exist
+            {"id": non_existent_id, "speaker": "Will"},  # This ID doesn't exist
         ]
 
         response = client.patch(
