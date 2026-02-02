@@ -1,9 +1,37 @@
 """Temporary admin routes for one-time operations."""
-from flask import Blueprint, jsonify
+import os
+from functools import wraps
+from flask import Blueprint, jsonify, request, Response
 from app.db.connection import get_cursor
-from app.api.app import requires_auth
 
 admin_api = Blueprint("admin_api", __name__, url_prefix="/admin")
+
+
+def check_auth(username, password):
+    """Check if username and password match environment variables."""
+    expected_username = os.environ.get("EDITOR_USERNAME", "admin")
+    expected_password = os.environ.get("EDITOR_PASSWORD", "changeme")
+    return username == expected_username and password == expected_password
+
+
+def authenticate():
+    """Send a 401 response that enables HTTP Basic Auth."""
+    return Response(
+        'Authentication required. Please provide valid credentials.',
+        401,
+        {'WWW-Authenticate': 'Basic realm="Admin Login Required"'}
+    )
+
+
+def requires_auth(f):
+    """Decorator to require HTTP Basic Auth for a route."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 
 @admin_api.route("/cleanup-episodes", methods=["POST"])
