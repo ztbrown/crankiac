@@ -34,6 +34,49 @@ def requires_auth(f):
     return decorated
 
 
+@admin_api.route("/preview-title-cleanup", methods=["GET"])
+@requires_auth
+def preview_title_cleanup():
+    """Preview which episodes would be deleted based on title pattern."""
+    # Show what will be deleted
+    with get_cursor(commit=False) as cursor:
+        cursor.execute("""
+            SELECT id, patreon_id, title
+            FROM episodes
+            WHERE NOT (
+                title ~ '^[0-9]' OR
+                title ILIKE 'BONUS:%'
+            )
+            ORDER BY title
+        """)
+        to_delete = cursor.fetchall()
+        to_delete_list = [
+            {"id": ep["id"], "patreon_id": ep["patreon_id"], "title": ep["title"]}
+            for ep in to_delete
+        ]
+
+    # Show what will be kept
+    with get_cursor(commit=False) as cursor:
+        cursor.execute("""
+            SELECT id, patreon_id, title
+            FROM episodes
+            WHERE title ~ '^[0-9]' OR title ILIKE 'BONUS:%'
+            ORDER BY title
+        """)
+        to_keep = cursor.fetchall()
+        to_keep_list = [
+            {"id": ep["id"], "patreon_id": ep["patreon_id"], "title": ep["title"]}
+            for ep in to_keep
+        ]
+
+    return jsonify({
+        "to_delete": to_delete_list,
+        "to_delete_count": len(to_delete_list),
+        "to_keep": to_keep_list,
+        "to_keep_count": len(to_keep_list)
+    })
+
+
 @admin_api.route("/cleanup-episodes", methods=["POST"])
 @requires_auth
 def cleanup_episodes():
