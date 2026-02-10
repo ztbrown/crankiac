@@ -8,7 +8,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Known speakers for the podcast
-KNOWN_SPEAKERS = ["Matt", "Will", "Felix", "Amber", "Virgil"]
+KNOWN_SPEAKERS = ["Matt", "Will", "Felix", "Amber", "Virgil", "Derek Davison"]
 
 @dataclass
 class SpeakerSegment:

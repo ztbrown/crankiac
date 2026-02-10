@@ -130,7 +130,7 @@ class EpisodePipeline:
         logger.info(f"Synced {len(episodes)} episodes to database")
         return episodes
 
-    def process_episode(self, episode: Episode) -> bool:
+    def process_episode(self, episode: Episode, force: bool = False) -> bool:
         """
         Process a single episode: download, transcribe, store, cleanup.
 
@@ -152,7 +152,7 @@ class EpisodePipeline:
         logger.info(f"Processing: {episode.title}")
 
         # Skip if already processed
-        if episode.processed:
+        if episode.processed and not force:
             logger.info(f"  Already processed, skipping")
             return True
 
@@ -221,12 +221,13 @@ class EpisodePipeline:
         except OSError as e:
             logger.warning(f"  Failed to clean up audio file: {e}")
 
-    def process_single(self, episode_id: int) -> bool:
+    def process_single(self, episode_id: int, force: bool = False) -> bool:
         """
         Process a specific episode by its database ID.
 
         Args:
             episode_id: Database ID of the episode to process.
+            force: If True, reprocess even if already processed.
 
         Returns:
             True if successful, False otherwise.
@@ -238,9 +239,9 @@ class EpisodePipeline:
         if episode is None:
             raise ValueError(f"Episode with id={episode_id} not found")
 
-        return self.process_episode(episode)
+        return self.process_episode(episode, force=force)
 
-    def process_unprocessed(self, limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False) -> dict:
+    def process_unprocessed(self, limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False, force: bool = False) -> dict:
         """
         Process all unprocessed episodes.
 
@@ -248,6 +249,7 @@ class EpisodePipeline:
             limit: Maximum episodes to process in one run. None for no limit.
             offset: Number of episodes to skip before processing.
             numbered_only: If True, only process numbered episodes.
+            force: If True, reprocess even if already processed.
 
         Returns:
             Dict with processing statistics.
@@ -267,7 +269,7 @@ class EpisodePipeline:
             if not episode.audio_url:
                 stats["skipped"] += 1
                 continue
-            if self.process_episode(episode):
+            if self.process_episode(episode, force=force):
                 stats["success"] += 1
             else:
                 stats["failed"] += 1
@@ -353,7 +355,7 @@ class EpisodePipeline:
             traceback.print_exc()
             return False
 
-    def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False) -> dict:
+    def run(self, sync: bool = True, max_sync: int = 100, process_limit: Optional[int] = 10, offset: int = 0, numbered_only: bool = False, force: bool = False) -> dict:
         """
         Run the full pipeline.
 
@@ -363,6 +365,7 @@ class EpisodePipeline:
             process_limit: Max episodes to process. None for no limit.
             offset: Number of episodes to skip before processing.
             numbered_only: If True, only process numbered episodes.
+            force: If True, reprocess even if already processed.
 
         Returns:
             Dict with pipeline statistics.
@@ -373,7 +376,7 @@ class EpisodePipeline:
             episodes = self.sync_episodes(max_sync)
             results["synced"] = len(episodes)
 
-        process_stats = self.process_unprocessed(process_limit, offset, numbered_only=numbered_only)
+        process_stats = self.process_unprocessed(process_limit, offset, numbered_only=numbered_only, force=force)
         results["processed"] = process_stats
 
         return results

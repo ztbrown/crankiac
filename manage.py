@@ -28,7 +28,7 @@ def process(args):
     if args.episode:
         print(f"Processing single episode ID={args.episode}...")
         try:
-            success = pipeline.process_single(args.episode)
+            success = pipeline.process_single(args.episode, force=args.force)
             if success:
                 print("Episode processed successfully.")
             else:
@@ -56,7 +56,7 @@ def process(args):
             sys.exit(1)
         episode = matches[0]
         print(f"Processing: {episode.title} (ID={episode.id})...")
-        success = pipeline.process_episode(episode)
+        success = pipeline.process_episode(episode, force=args.force)
         if success:
             print("Episode processed successfully.")
         else:
@@ -82,7 +82,7 @@ def process(args):
             if not episode.audio_url:
                 stats["skipped"] += 1
                 continue
-            if pipeline.process_episode(episode):
+            if pipeline.process_episode(episode, force=args.force):
                 stats["success"] += 1
             else:
                 stats["failed"] += 1
@@ -156,7 +156,7 @@ def process(args):
             if not episode.audio_url:
                 stats["skipped"] += 1
                 continue
-            if pipeline.process_episode(episode):
+            if pipeline.process_episode(episode, force=args.force):
                 stats["success"] += 1
             else:
                 stats["failed"] += 1
@@ -178,7 +178,8 @@ def process(args):
         max_sync=args.max_sync,
         process_limit=process_limit,
         offset=args.offset,
-        numbered_only=numbered_only
+        numbered_only=numbered_only,
+        force=args.force
     )
 
     print(f"\nResults:")
@@ -646,6 +647,8 @@ def main():
     process_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to process (e.g., 1003,1006)")
     # Vocabulary hints
     process_parser.add_argument("--vocab", metavar="PATH", help="Path to vocabulary file (names/terms, one per line)")
+    # Reprocessing
+    process_parser.add_argument("--force", action="store_true", help="Force reprocessing of already-processed episodes")
 
     # diarize command
     diarize_parser = subparsers.add_parser("diarize", help="Run speaker diarization on already-transcribed episodes")
