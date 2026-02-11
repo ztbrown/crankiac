@@ -29,9 +29,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 
 def normalize_url(url: str) -> str:
-    """Convert postgres:// to postgresql:// for psycopg2 compatibility."""
+    """Convert postgres:// to postgresql:// and ensure sslmode for Railway."""
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
+        url = url.replace("postgres://", "postgresql://", 1)
+    # Ensure sslmode for Railway connections
+    if "rlwy.net" in url and "sslmode" not in url:
+        sep = "&" if "?" in url else "?"
+        url += f"{sep}sslmode=require"
     return url
 
 
@@ -271,11 +275,22 @@ def main():
         return
 
     # ---- Push to remote ----
+    # Group segments and anchors by episode for per-episode commits
+    segments_by_ep: dict[int, list[dict]] = {}
+    for s in segments:
+        segments_by_ep.setdefault(s["episode_id"], []).append(s)
+    anchors_by_ep: dict[int, list[dict]] = {}
+    for a in anchors:
+        anchors_by_ep.setdefault(a["episode_id"], []).append(a)
+
+    remote_url_normalized = normalize_url(remote_url)
+
+    # Phase 1: migrations + episodes + speakers (small, one transaction)
     print(f"\nConnecting to remote...")
-    remote_conn = psycopg2.connect(normalize_url(remote_url))
+    remote_conn = psycopg2.connect(remote_url_normalized)
     try:
+        remote_conn.autocommit = False
         with remote_conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Run migrations first (unless skipped)
             if not args.skip_migrations:
                 print("Running migrations...")
                 run_migrations(cur)
@@ -288,22 +303,101 @@ def main():
             speaker_map = upsert_speakers(cur, speakers)
             print(f"  {len(speaker_map)} speakers mapped")
 
-            print("Pushing transcript segments...")
-            push_segments(cur, segments, episode_map, speaker_map, args.batch_size)
-
-            print("Upserting timestamp anchors...")
-            upsert_anchors(cur, anchors, episode_map)
-
-        # Commit the entire transaction
         remote_conn.commit()
-        print("\nAll data pushed successfully.")
-
+        print("Phase 1 committed (migrations, episodes, speakers)")
     except Exception:
         remote_conn.rollback()
-        print("\nERROR: Transaction rolled back.", file=sys.stderr)
+        print("\nERROR: Phase 1 rolled back.", file=sys.stderr)
         raise
     finally:
         remote_conn.close()
+
+    # Phase 2: segments + anchors, one transaction per episode
+    print("\nPushing transcript segments & anchors per episode...")
+    total_segs = 0
+    total_anchors = 0
+    for i, ep in enumerate(episodes):
+        local_ep_id = ep["id"]
+        remote_ep_id = episode_map.get(local_ep_id)
+        if remote_ep_id is None:
+            continue
+
+        ep_segs = segments_by_ep.get(local_ep_id, [])
+        ep_anchors = anchors_by_ep.get(local_ep_id, [])
+
+        if not ep_segs and not ep_anchors:
+            continue
+
+        conn = psycopg2.connect(remote_url_normalized)
+        try:
+            conn.autocommit = False
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Delete existing segments for this episode
+                cur.execute(
+                    "DELETE FROM transcript_segments WHERE episode_id = %s",
+                    (remote_ep_id,),
+                )
+
+                # Insert segments in batches
+                for j in range(0, len(ep_segs), args.batch_size):
+                    batch = ep_segs[j : j + args.batch_size]
+                    values = []
+                    for s in batch:
+                        remote_speaker_id = speaker_map.get(s["speaker_id"]) if s.get("speaker_id") else None
+                        values.append((
+                            remote_ep_id,
+                            s["word"],
+                            str(s["start_time"]),
+                            str(s["end_time"]),
+                            s["segment_index"],
+                            s.get("speaker"),
+                            remote_speaker_id,
+                        ))
+                    if values:
+                        args_str = ",".join(
+                            cur.mogrify("(%s,%s,%s,%s,%s,%s,%s)", v).decode("utf-8")
+                            for v in values
+                        )
+                        cur.execute(f"""
+                            INSERT INTO transcript_segments
+                            (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id)
+                            VALUES {args_str}
+                        """)
+
+                # Upsert anchors for this episode
+                for a in ep_anchors:
+                    cur.execute(
+                        """
+                        INSERT INTO timestamp_anchors
+                            (episode_id, patreon_time, youtube_time, confidence, matched_text)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (episode_id, patreon_time) DO UPDATE SET
+                            youtube_time = EXCLUDED.youtube_time,
+                            confidence = EXCLUDED.confidence,
+                            matched_text = EXCLUDED.matched_text
+                        """,
+                        (
+                            remote_ep_id,
+                            str(a["patreon_time"]),
+                            str(a["youtube_time"]),
+                            str(a["confidence"]) if a.get("confidence") is not None else None,
+                            a.get("matched_text"),
+                        ),
+                    )
+
+            conn.commit()
+            total_segs += len(ep_segs)
+            total_anchors += len(ep_anchors)
+            print(f"  [{i+1}/{len(episodes)}] {ep['title'][:50]}  ({len(ep_segs)} segs, {len(ep_anchors)} anchors)")
+
+        except Exception:
+            conn.rollback()
+            print(f"\nERROR: Failed on episode {ep['title']}", file=sys.stderr)
+            raise
+        finally:
+            conn.close()
+
+    print(f"\nDone. {total_segs} segments, {total_anchors} anchors pushed across {len(episodes)} episodes.")
 
 
 if __name__ == "__main__":
