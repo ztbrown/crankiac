@@ -244,17 +244,6 @@ class SpeakerIdentifier:
         if not unique_labels:
             return {}
 
-        # When expected speakers match detected count, skip threshold
-        skip_threshold = (
-            expected_speakers is not None
-            and len(references) == len(unique_labels)
-        )
-        if skip_threshold:
-            logger.info(
-                f"Speaker count matches expected ({len(unique_labels)}), "
-                "assigning by best match (no threshold)"
-            )
-
         logger.info(f"Identifying {len(unique_labels)} speakers against {len(references)} references")
 
         # Pre-load audio to avoid torchcodec issues on Windows
@@ -292,19 +281,49 @@ class SpeakerIdentifier:
         for score, label, name in scores:
             if label in assigned_labels or name in assigned_names:
                 continue
-            if skip_threshold or score >= self.match_threshold:
+            if score >= self.match_threshold:
                 label_to_name[label] = name
                 assigned_labels.add(label)
                 assigned_names.add(name)
                 logger.info(f"  {label} -> {name} (score={score:.3f})")
 
-        # Assign unknown labels to unmatched clusters
-        unknown_counter = 1
-        for label in unique_labels:
-            if label not in label_to_name:
-                label_to_name[label] = f"Unknown_{unknown_counter}"
-                logger.info(f"  {label} -> Unknown_{unknown_counter}")
-                unknown_counter += 1
+        # When expected_speakers is set, assign unmatched clusters to their
+        # closest expected speaker rather than labeling them Unknown. This
+        # lets pyannote over-segment freely (isolating noise/overlap) while
+        # still funneling every cluster into a known speaker.
+        if expected_speakers:
+            for label in unique_labels:
+                if label in label_to_name:
+                    continue
+                if label not in cluster_embeddings:
+                    # No embedding extracted — assign to most common expected speaker
+                    # Pick the first expected speaker that was matched as fallback
+                    for name in expected_speakers:
+                        if name in references:
+                            label_to_name[label] = name
+                            logger.info(f"  {label} -> {name} (no embedding, fallback)")
+                            break
+                    continue
+                # Find best matching expected speaker (ignore threshold)
+                best_name = None
+                best_score = -1.0
+                cluster_emb = cluster_embeddings[label]
+                for name, ref_emb in references.items():
+                    score = self.cosine_similarity(cluster_emb, ref_emb)
+                    if score > best_score:
+                        best_score = score
+                        best_name = name
+                if best_name:
+                    label_to_name[label] = best_name
+                    logger.info(f"  {label} -> {best_name} (score={best_score:.3f}, forced)")
+        else:
+            # No expected speakers — label unmatched clusters as Unknown
+            unknown_counter = 1
+            for label in unique_labels:
+                if label not in label_to_name:
+                    label_to_name[label] = f"Unknown_{unknown_counter}"
+                    logger.info(f"  {label} -> Unknown_{unknown_counter}")
+                    unknown_counter += 1
 
         return label_to_name
 
