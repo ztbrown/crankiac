@@ -380,7 +380,8 @@ class EpisodePipeline:
                 logger.info(f"  Running speaker identification...")
                 try:
                     label_map = self.speaker_identifier.identify(
-                        download_result.file_path, speaker_segments
+                        download_result.file_path, speaker_segments,
+                        expected_speakers=self.expected_speakers,
                     )
                     if label_map:
                         speaker_segments = self.speaker_identifier.relabel_segments(
