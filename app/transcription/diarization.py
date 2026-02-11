@@ -54,16 +54,10 @@ class SpeakerDiarizer:
                         "Set HF_TOKEN environment variable or pass hf_token parameter."
                     )
 
-                try:
-                    self._pipeline = Pipeline.from_pretrained(
-                        "pyannote/speaker-diarization-3.1",
-                        token=self.hf_token
-                    )
-                except TypeError:
-                    self._pipeline = Pipeline.from_pretrained(
-                        "pyannote/speaker-diarization-3.1",
-                        use_auth_token=self.hf_token
-                    )
+                self._pipeline = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                    token=self.hf_token
+                )
                 if torch.cuda.is_available():
                     self._pipeline = self._pipeline.to(torch.device("cuda"))
                     logger.info("Loaded pyannote speaker diarization pipeline (GPU)")
@@ -96,7 +90,15 @@ class SpeakerDiarizer:
         if self.num_speakers:
             kwargs["num_speakers"] = self.num_speakers
 
-        diarization = self.pipeline(audio_path, **kwargs)
+        # Try loading audio as waveform via torchaudio to avoid torchcodec issues on Windows
+        try:
+            import torchaudio
+            waveform, sample_rate = torchaudio.load(audio_path)
+            audio_input = {"waveform": waveform, "sample_rate": sample_rate}
+        except Exception:
+            audio_input = audio_path
+
+        diarization = self.pipeline(audio_input, **kwargs)
 
         segments = []
         for turn, _, speaker in diarization.itertracks(yield_label=True):
