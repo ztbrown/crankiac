@@ -54,10 +54,16 @@ class SpeakerDiarizer:
                         "Set HF_TOKEN environment variable or pass hf_token parameter."
                     )
 
-                self._pipeline = Pipeline.from_pretrained(
-                    "pyannote/speaker-diarization-3.1",
-                    token=self.hf_token
-                )
+                try:
+                    self._pipeline = Pipeline.from_pretrained(
+                        "pyannote/speaker-diarization-3.1",
+                        token=self.hf_token
+                    )
+                except TypeError:
+                    self._pipeline = Pipeline.from_pretrained(
+                        "pyannote/speaker-diarization-3.1",
+                        use_auth_token=self.hf_token
+                    )
                 if torch.cuda.is_available():
                     self._pipeline = self._pipeline.to(torch.device("cuda"))
                     logger.info("Loaded pyannote speaker diarization pipeline (GPU)")
