@@ -13,6 +13,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 DEFAULT_MATCH_THRESHOLD = 0.70
+DEFAULT_NOISE_FLOOR = 0.30
 DEFAULT_EMBEDDINGS_DIR = "data/speaker_embeddings"
 
 
@@ -288,23 +289,19 @@ class SpeakerIdentifier:
                 logger.info(f"  {label} -> {name} (score={score:.3f})")
 
         # When expected_speakers is set, assign unmatched clusters to their
-        # closest expected speaker rather than labeling them Unknown. This
-        # lets pyannote over-segment freely (isolating noise/overlap) while
-        # still funneling every cluster into a known speaker.
+        # closest expected speaker — unless the score is below the noise floor,
+        # which indicates music/noise rather than speech. Those clusters map to
+        # None so their segments get no speaker assignment.
         if expected_speakers:
             for label in unique_labels:
                 if label in label_to_name:
                     continue
                 if label not in cluster_embeddings:
-                    # No embedding extracted — assign to most common expected speaker
-                    # Pick the first expected speaker that was matched as fallback
-                    for name in expected_speakers:
-                        if name in references:
-                            label_to_name[label] = name
-                            logger.info(f"  {label} -> {name} (no embedding, fallback)")
-                            break
+                    # No embedding extracted — likely too short/noisy, treat as noise
+                    label_to_name[label] = None
+                    logger.info(f"  {label} -> [noise] (no embedding)")
                     continue
-                # Find best matching expected speaker (ignore threshold)
+                # Find best matching expected speaker
                 best_name = None
                 best_score = -1.0
                 cluster_emb = cluster_embeddings[label]
@@ -313,9 +310,12 @@ class SpeakerIdentifier:
                     if score > best_score:
                         best_score = score
                         best_name = name
-                if best_name:
+                if best_score >= DEFAULT_NOISE_FLOOR:
                     label_to_name[label] = best_name
                     logger.info(f"  {label} -> {best_name} (score={best_score:.3f}, forced)")
+                else:
+                    label_to_name[label] = None
+                    logger.info(f"  {label} -> [noise] (score={best_score:.3f}, below floor {DEFAULT_NOISE_FLOOR})")
         else:
             # No expected speakers — label unmatched clusters as Unknown
             unknown_counter = 1
@@ -334,14 +334,22 @@ class SpeakerIdentifier:
     ) -> list:
         """Apply speaker name mapping to diarization segments.
 
+        Segments mapped to None (noise/music) are removed entirely so they
+        don't interfere with speaker-to-word assignment.
+
         Args:
             speaker_segments: List of SpeakerSegment objects.
-            label_map: Dict mapping original labels to identified names.
+            label_map: Dict mapping original labels to identified names,
+                or None for noise/music clusters.
 
         Returns:
-            The same segments with speaker labels replaced.
+            Filtered segments with speaker labels replaced.
         """
+        result = []
         for seg in speaker_segments:
             if seg.speaker in label_map:
+                if label_map[seg.speaker] is None:
+                    continue  # Drop noise/music segments
                 seg.speaker = label_map[seg.speaker]
-        return speaker_segments
+            result.append(seg)
+        return result
