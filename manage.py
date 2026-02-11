@@ -16,6 +16,10 @@ def process(args):
     from app.db.repository import EpisodeRepository
     from app.episode_filter import filter_episodes, EXCLUDED_SHOWS
 
+    expected_speakers = None
+    if args.expected_speakers:
+        expected_speakers = [s.strip() for s in args.expected_speakers.split(",")]
+
     pipeline = EpisodePipeline(
         whisper_model=args.model,
         cleanup_audio=not args.no_cleanup,
@@ -24,6 +28,7 @@ def process(args):
         vocabulary_file=args.vocab,
         enable_speaker_id=args.identify_speakers,
         match_threshold=args.match_threshold,
+        expected_speakers=expected_speakers,
     )
 
     # Handle single episode processing by ID
@@ -198,12 +203,17 @@ def diarize(args):
     from app.pipeline import EpisodePipeline
     from app.db.repository import EpisodeRepository
 
+    expected_speakers = None
+    if args.expected_speakers:
+        expected_speakers = [s.strip() for s in args.expected_speakers.split(",")]
+
     pipeline = EpisodePipeline(
         cleanup_audio=not args.no_cleanup,
         enable_diarization=True,
         num_speakers=args.num_speakers,
         enable_speaker_id=args.identify_speakers,
         match_threshold=args.match_threshold,
+        expected_speakers=expected_speakers,
     )
 
     repo = EpisodeRepository()
@@ -679,6 +689,7 @@ def main():
     # Speaker identification options
     process_parser.add_argument("--identify-speakers", action="store_true", help="Enable speaker identification via voice embeddings")
     process_parser.add_argument("--match-threshold", type=float, default=0.70, help="Cosine similarity threshold for speaker matching (default: 0.70)")
+    process_parser.add_argument("--expected-speakers", type=str, help="Comma-separated expected speaker names (e.g., 'Will Menaker,Felix Biederman')")
     # Episode selection by number
     process_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to process (e.g., 1003,1006)")
     # Vocabulary hints
@@ -695,6 +706,7 @@ def main():
     # Speaker identification options
     diarize_parser.add_argument("--identify-speakers", action="store_true", help="Enable speaker identification via voice embeddings")
     diarize_parser.add_argument("--match-threshold", type=float, default=0.70, help="Cosine similarity threshold for speaker matching (default: 0.70)")
+    diarize_parser.add_argument("--expected-speakers", type=str, help="Comma-separated expected speaker names (e.g., 'Will Menaker,Felix Biederman')")
 
     # youtube-fetch command
     fetch_parser = subparsers.add_parser("youtube-fetch", help="Fetch YouTube videos and save to JSON")

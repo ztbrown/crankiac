@@ -33,6 +33,7 @@ class EpisodePipeline:
         enable_speaker_id: bool = False,
         match_threshold: float = 0.70,
         embeddings_dir: str = "data/speaker_embeddings",
+        expected_speakers: Optional[list[str]] = None,
     ):
         """
         Initialize the pipeline.
@@ -57,6 +58,7 @@ class EpisodePipeline:
         self.cleanup_audio = cleanup_audio
         self.enable_diarization = enable_diarization
         self.enable_speaker_id = enable_speaker_id
+        self.expected_speakers = expected_speakers
         self.patreon = PatreonClient(self.session_id)
         self.downloader = AudioDownloader(self.session_id, download_dir)
         self.storage = TranscriptStorage()
@@ -207,7 +209,8 @@ class EpisodePipeline:
                         logger.info(f"  Running speaker identification...")
                         try:
                             label_map = self.speaker_identifier.identify(
-                                download_result.file_path, speaker_segments
+                                download_result.file_path, speaker_segments,
+                                expected_speakers=self.expected_speakers,
                             )
                             if label_map:
                                 speaker_segments = self.speaker_identifier.relabel_segments(

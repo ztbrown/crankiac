@@ -199,15 +199,23 @@ class SpeakerIdentifier:
         self,
         audio_path: str,
         speaker_segments: list,
+        expected_speakers: Optional[List[str]] = None,
     ) -> Dict[str, str]:
         """Identify speakers by matching diarization clusters to references.
 
         Uses greedy assignment: best match first, remove from pool, repeat.
         Unmatched clusters get "Unknown_1", "Unknown_2", etc.
 
+        When expected_speakers is provided, matching is constrained to only
+        those names. If the count of expected speakers matches the count of
+        detected speakers, threshold is skipped and assignment is purely by
+        best greedy match.
+
         Args:
             audio_path: Path to the audio file.
             speaker_segments: List of SpeakerSegment objects from diarization.
+            expected_speakers: Optional list of expected speaker names to
+                constrain matching (e.g., ["Will Menaker", "Felix Biederman"]).
 
         Returns:
             Dict mapping original labels to identified names.
@@ -219,10 +227,33 @@ class SpeakerIdentifier:
             logger.warning("No reference embeddings found, skipping identification")
             return {}
 
+        # Filter references to expected speakers if provided
+        if expected_speakers:
+            filtered = {name: emb for name, emb in references.items() if name in expected_speakers}
+            missing = [name for name in expected_speakers if name not in references]
+            if missing:
+                logger.warning(f"No reference embeddings for expected speakers: {missing}")
+            if not filtered:
+                logger.warning("None of the expected speakers have reference embeddings")
+                return {}
+            references = filtered
+            logger.info(f"Constrained to {len(references)} expected speakers: {list(references.keys())}")
+
         # Get unique speaker labels
         unique_labels = sorted(set(s.speaker for s in speaker_segments if s.speaker))
         if not unique_labels:
             return {}
+
+        # When expected speakers match detected count, skip threshold
+        skip_threshold = (
+            expected_speakers is not None
+            and len(references) == len(unique_labels)
+        )
+        if skip_threshold:
+            logger.info(
+                f"Speaker count matches expected ({len(unique_labels)}), "
+                "assigning by best match (no threshold)"
+            )
 
         logger.info(f"Identifying {len(unique_labels)} speakers against {len(references)} references")
 
@@ -261,7 +292,7 @@ class SpeakerIdentifier:
         for score, label, name in scores:
             if label in assigned_labels or name in assigned_names:
                 continue
-            if score >= self.match_threshold:
+            if skip_threshold or score >= self.match_threshold:
                 label_to_name[label] = name
                 assigned_labels.add(label)
                 assigned_names.add(name)
