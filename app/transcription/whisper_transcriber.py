@@ -37,9 +37,11 @@ class WhisperTranscriber:
 
     @property
     def model(self):
-        """Lazy load the model."""
+        """Lazy load the model on GPU if available."""
         if self._model is None:
-            self._model = whisper.load_model(self.model_name)
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            self._model = whisper.load_model(self.model_name, device=device)
         return self._model
 
     def transcribe(self, audio_path: str) -> TranscriptResult:
