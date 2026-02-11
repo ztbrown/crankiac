@@ -33,7 +33,6 @@ htmlcov/
 
 # Speaker identification data
 data/reference_audio/
-data/speaker_embeddings/
 
 # Gas Town (added by gt)
 .runtime/
