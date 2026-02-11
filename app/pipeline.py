@@ -75,7 +75,12 @@ class EpisodePipeline:
         self.diarizer = None
         if enable_diarization:
             try:
-                self.diarizer = get_diarizer(hf_token=hf_token, num_speakers=num_speakers)
+                # Infer num_speakers from expected_speakers if not explicitly set
+                effective_num_speakers = num_speakers
+                if effective_num_speakers is None and expected_speakers:
+                    effective_num_speakers = len(expected_speakers)
+                    logger.info(f"Inferring num_speakers={effective_num_speakers} from expected_speakers")
+                self.diarizer = get_diarizer(hf_token=hf_token, num_speakers=effective_num_speakers)
                 logger.info("Speaker diarization enabled")
             except Exception as e:
                 logger.warning(f"Could not initialize diarizer: {e}. Diarization disabled.")
