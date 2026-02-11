@@ -61,6 +61,8 @@ class WhisperTranscriber:
         result = self.model.transcribe(
             audio_path,
             word_timestamps=True,
+            language="en",
+            condition_on_previous_text=False,
             initial_prompt=self.initial_prompt,
             verbose=False
         )
