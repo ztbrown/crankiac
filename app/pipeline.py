@@ -208,13 +208,13 @@ class EpisodePipeline:
                     if self.speaker_identifier:
                         logger.info(f"  Running speaker identification...")
                         try:
-                            label_map = self.speaker_identifier.identify(
+                            label_map, score_map = self.speaker_identifier.identify(
                                 download_result.file_path, speaker_segments,
                                 expected_speakers=self.expected_speakers,
                             )
                             if label_map:
                                 speaker_segments = self.speaker_identifier.relabel_segments(
-                                    speaker_segments, label_map
+                                    speaker_segments, label_map, score_map
                                 )
                                 logger.info(f"  Identified speakers: {label_map}")
                         except Exception as e:
@@ -374,13 +374,13 @@ class EpisodePipeline:
             if self.speaker_identifier:
                 logger.info(f"  Running speaker identification...")
                 try:
-                    label_map = self.speaker_identifier.identify(
+                    label_map, score_map = self.speaker_identifier.identify(
                         download_result.file_path, speaker_segments,
                         expected_speakers=self.expected_speakers,
                     )
                     if label_map:
                         speaker_segments = self.speaker_identifier.relabel_segments(
-                            speaker_segments, label_map
+                            speaker_segments, label_map, score_map
                         )
                         logger.info(f"  Identified speakers: {label_map}")
                 except Exception as e:

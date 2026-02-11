@@ -14,6 +14,7 @@ class SpeakerSegment:
     speaker: str
     start_time: Decimal
     end_time: Decimal
+    confidence: Optional[float] = None
 
 
 class SpeakerDiarizer:
@@ -176,16 +177,20 @@ def assign_speakers_to_words(
         word_mid = (word.start_time + word.end_time) / 2
 
         speaker = None
+        confidence = None
         for seg in sorted_speakers:
             if seg.start_time <= word_mid <= seg.end_time:
                 speaker = seg.speaker
+                confidence = seg.confidence
                 break
             elif seg.start_time > word_mid:
                 # Past the word's time, stop searching
                 break
 
-        # Set the speaker (may remain None if no match)
+        # Set the speaker and confidence (may remain None if no match)
         word.speaker = speaker
+        if hasattr(word, 'speaker_confidence'):
+            word.speaker_confidence = confidence
 
     return word_segments
 

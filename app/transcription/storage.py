@@ -213,9 +213,10 @@ class TranscriptStorage:
                 for seg in batch:
                     if seg.id is not None:
                         speaker_id = speaker_id_cache.get(seg.speaker)
+                        confidence = getattr(seg, 'speaker_confidence', None)
                         cursor.execute(
-                            "UPDATE transcript_segments SET speaker = %s, speaker_id = %s WHERE id = %s",
-                            (seg.speaker, speaker_id, seg.id)
+                            "UPDATE transcript_segments SET speaker = %s, speaker_id = %s, speaker_confidence = %s WHERE id = %s",
+                            (seg.speaker, speaker_id, confidence, seg.id)
                         )
                         updated += cursor.rowcount
 
@@ -428,6 +429,7 @@ class TranscriptStorage:
                     ts.end_time,
                     ts.segment_index,
                     ts.speaker,
+                    ts.speaker_confidence,
                     s.name as speaker_name
                 FROM transcript_segments ts
                 LEFT JOIN speakers s ON ts.speaker_id = s.id
@@ -449,6 +451,8 @@ class TranscriptStorage:
             for row in rows:
                 speaker = row["speaker_name"] or row["speaker"] or "Unknown Speaker"
 
+                confidence = float(row["speaker_confidence"]) if row["speaker_confidence"] is not None else None
+
                 # Start new paragraph if speaker changed or this is the first segment
                 if current_paragraph is None or current_paragraph["speaker"] != speaker:
                     if current_paragraph:
@@ -459,13 +463,22 @@ class TranscriptStorage:
                         "text": row["word"],
                         "start_time": float(row["start_time"]),
                         "end_time": float(row["end_time"]),
-                        "segment_ids": [row["id"]]
+                        "segment_ids": [row["id"]],
+                        "speaker_confidence": confidence,
                     }
                 else:
                     # Add to current paragraph
                     current_paragraph["text"] += " " + row["word"]
                     current_paragraph["end_time"] = float(row["end_time"])
                     current_paragraph["segment_ids"].append(row["id"])
+                    # Use minimum confidence in the paragraph
+                    if confidence is not None:
+                        if current_paragraph["speaker_confidence"] is None:
+                            current_paragraph["speaker_confidence"] = confidence
+                        else:
+                            current_paragraph["speaker_confidence"] = min(
+                                current_paragraph["speaker_confidence"], confidence
+                            )
 
             # Add the last paragraph
             if current_paragraph:

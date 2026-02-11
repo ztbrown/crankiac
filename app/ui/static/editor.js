@@ -185,7 +185,19 @@ class TranscriptEditor {
 
             const speakerLabel = document.createElement("div");
             speakerLabel.className = "speaker-label";
-            speakerLabel.textContent = `[${paragraph.speaker || "Unknown Speaker"}]`;
+            const speakerName = paragraph.speaker || "Unknown Speaker";
+            const confidence = paragraph.speaker_confidence;
+            if (confidence !== null && confidence !== undefined) {
+                const pct = Math.round(confidence * 100);
+                speakerLabel.textContent = `[${speakerName}] ${pct}%`;
+                if (confidence < 0.5) {
+                    speakerLabel.classList.add("low-confidence");
+                } else if (confidence < 0.7) {
+                    speakerLabel.classList.add("medium-confidence");
+                }
+            } else {
+                speakerLabel.textContent = `[${speakerName}]`;
+            }
 
             const textDiv = document.createElement("div");
             textDiv.className = "paragraph-text";

@@ -239,6 +239,14 @@ body {
     letter-spacing: 0.5px;
 }
 
+.speaker-label.low-confidence {
+    color: #cc3300;
+}
+
+.speaker-label.medium-confidence {
+    color: #cc8800;
+}
+
 .paragraph-text {
     font-size: 16px;
     line-height: 1.8;

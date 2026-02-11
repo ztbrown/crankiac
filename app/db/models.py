@@ -27,4 +27,5 @@ class TranscriptSegment:
     end_time: Decimal
     segment_index: int
     speaker: Optional[str] = None
+    speaker_confidence: Optional[Decimal] = None
     created_at: Optional[datetime] = None

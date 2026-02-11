@@ -201,16 +201,14 @@ class SpeakerIdentifier:
         audio_path: str,
         speaker_segments: list,
         expected_speakers: Optional[List[str]] = None,
-    ) -> Dict[str, str]:
+    ) -> Tuple[Dict[str, str], Dict[str, float]]:
         """Identify speakers by matching diarization clusters to references.
 
         Uses greedy assignment: best match first, remove from pool, repeat.
         Unmatched clusters get "Unknown_1", "Unknown_2", etc.
 
         When expected_speakers is provided, matching is constrained to only
-        those names. If the count of expected speakers matches the count of
-        detected speakers, threshold is skipped and assignment is purely by
-        best greedy match.
+        those names and all clusters are assigned to the closest match.
 
         Args:
             audio_path: Path to the audio file.
@@ -219,14 +217,15 @@ class SpeakerIdentifier:
                 constrain matching (e.g., ["Will Menaker", "Felix Biederman"]).
 
         Returns:
-            Dict mapping original labels to identified names.
-            e.g., {"SPEAKER_00": "Matt", "SPEAKER_01": "Will", "SPEAKER_02": "Unknown_1"}
+            Tuple of (label_to_name, label_to_score):
+                label_to_name: Dict mapping original labels to identified names.
+                label_to_score: Dict mapping original labels to confidence scores.
         """
         references = self.load_reference_embeddings()
 
         if not references:
             logger.warning("No reference embeddings found, skipping identification")
-            return {}
+            return {}, {}
 
         # Filter references to expected speakers if provided
         if expected_speakers:
@@ -236,14 +235,14 @@ class SpeakerIdentifier:
                 logger.warning(f"No reference embeddings for expected speakers: {missing}")
             if not filtered:
                 logger.warning("None of the expected speakers have reference embeddings")
-                return {}
+                return {}, {}
             references = filtered
             logger.info(f"Constrained to {len(references)} expected speakers: {list(references.keys())}")
 
         # Get unique speaker labels
         unique_labels = sorted(set(s.speaker for s in speaker_segments if s.speaker))
         if not unique_labels:
-            return {}
+            return {}, {}
 
         logger.info(f"Identifying {len(unique_labels)} speakers against {len(references)} references")
 
@@ -263,7 +262,7 @@ class SpeakerIdentifier:
 
         if not cluster_embeddings:
             logger.warning("Could not extract any cluster embeddings")
-            return {}
+            return {}, {}
 
         # Greedy assignment: compute all scores, assign best first
         scores = []
@@ -276,6 +275,7 @@ class SpeakerIdentifier:
         scores.sort(key=lambda x: x[0], reverse=True)
 
         label_to_name = {}
+        label_to_score = {}
         assigned_labels = set()
         assigned_names = set()
 
@@ -284,14 +284,13 @@ class SpeakerIdentifier:
                 continue
             if score >= self.match_threshold:
                 label_to_name[label] = name
+                label_to_score[label] = score
                 assigned_labels.add(label)
                 assigned_names.add(name)
                 logger.info(f"  {label} -> {name} (score={score:.3f})")
 
         # When expected_speakers is set, assign unmatched clusters to their
-        # closest expected speaker — unless the score is below the noise floor,
-        # which indicates music/noise rather than speech. Those clusters map to
-        # None so their segments get no speaker assignment.
+        # closest expected speaker regardless of score.
         if expected_speakers:
             for label in unique_labels:
                 if label in label_to_name:
@@ -301,6 +300,7 @@ class SpeakerIdentifier:
                     for name in expected_speakers:
                         if name in references:
                             label_to_name[label] = name
+                            label_to_score[label] = 0.0
                             logger.info(f"  {label} -> {name} (no embedding, fallback)")
                             break
                     continue
@@ -314,6 +314,7 @@ class SpeakerIdentifier:
                         best_score = score
                         best_name = name
                 label_to_name[label] = best_name
+                label_to_score[label] = best_score
                 logger.info(f"  {label} -> {best_name} (score={best_score:.3f}, forced)")
         else:
             # No expected speakers — label unmatched clusters as Unknown
@@ -321,34 +322,32 @@ class SpeakerIdentifier:
             for label in unique_labels:
                 if label not in label_to_name:
                     label_to_name[label] = f"Unknown_{unknown_counter}"
+                    label_to_score[label] = label_to_score.get(label, 0.0)
                     logger.info(f"  {label} -> Unknown_{unknown_counter}")
                     unknown_counter += 1
 
-        return label_to_name
+        return label_to_name, label_to_score
 
     def relabel_segments(
         self,
         speaker_segments: list,
         label_map: Dict[str, str],
+        score_map: Optional[Dict[str, float]] = None,
     ) -> list:
-        """Apply speaker name mapping to diarization segments.
-
-        Segments mapped to None (noise/music) are removed entirely so they
-        don't interfere with speaker-to-word assignment.
+        """Apply speaker name mapping and confidence scores to diarization segments.
 
         Args:
             speaker_segments: List of SpeakerSegment objects.
-            label_map: Dict mapping original labels to identified names,
-                or None for noise/music clusters.
+            label_map: Dict mapping original labels to identified names.
+            score_map: Optional dict mapping original labels to confidence scores.
 
         Returns:
-            Filtered segments with speaker labels replaced.
+            Segments with speaker labels and confidence scores applied.
         """
-        result = []
         for seg in speaker_segments:
             if seg.speaker in label_map:
-                if label_map[seg.speaker] is None:
-                    continue  # Drop noise/music segments
-                seg.speaker = label_map[seg.speaker]
-            result.append(seg)
-        return result
+                original_label = seg.speaker
+                seg.speaker = label_map[original_label]
+                if score_map and original_label in score_map:
+                    seg.confidence = score_map[original_label]
+        return speaker_segments
