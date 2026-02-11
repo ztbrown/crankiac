@@ -41,7 +41,9 @@ class WhisperTranscriber:
         if self._model is None:
             import torch
             device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"[whisper] torch.cuda.is_available()={torch.cuda.is_available()}, loading '{self.model_name}' on {device}")
             self._model = whisper.load_model(self.model_name, device=device)
+            print(f"[whisper] model loaded on {next(self._model.parameters()).device}")
         return self._model
 
     def transcribe(self, audio_path: str) -> TranscriptResult:
