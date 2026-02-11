@@ -192,6 +192,18 @@ def assign_speakers_to_words(
         if hasattr(word, 'speaker_confidence'):
             word.speaker_confidence = confidence
 
+    # Fill gaps: words with no speaker inherit from the nearest preceding word
+    last_speaker = None
+    last_confidence = None
+    for word in word_segments:
+        if word.speaker is not None:
+            last_speaker = word.speaker
+            last_confidence = getattr(word, 'speaker_confidence', None)
+        elif last_speaker is not None:
+            word.speaker = last_speaker
+            if hasattr(word, 'speaker_confidence'):
+                word.speaker_confidence = last_confidence
+
     return word_segments
 
 
