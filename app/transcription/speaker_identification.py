@@ -52,10 +52,16 @@ class SpeakerIdentifier:
                     "Set HF_TOKEN environment variable."
                 )
 
-            model = Model.from_pretrained(
-                "pyannote/embedding",
-                use_auth_token=self.hf_token,
-            )
+            try:
+                model = Model.from_pretrained(
+                    "pyannote/embedding",
+                    token=self.hf_token,
+                )
+            except TypeError:
+                model = Model.from_pretrained(
+                    "pyannote/embedding",
+                    use_auth_token=self.hf_token,
+                )
             self._model = Inference(model, window="whole")
             logger.info("Loaded pyannote embedding model")
         return self._model
