@@ -101,12 +101,31 @@ class SpeakerDiarizer:
         diarization = self.pipeline(audio_input, **kwargs)
 
         segments = []
-        for turn, _, speaker in diarization.itertracks(yield_label=True):
-            segments.append(SpeakerSegment(
-                speaker=speaker,
-                start_time=Decimal(str(round(turn.start, 3))),
-                end_time=Decimal(str(round(turn.end, 3)))
-            ))
+        # Handle both old (Annotation.itertracks) and new (DiarizeOutput) pyannote formats
+        if hasattr(diarization, 'itertracks'):
+            for turn, _, speaker in diarization.itertracks(yield_label=True):
+                segments.append(SpeakerSegment(
+                    speaker=speaker,
+                    start_time=Decimal(str(round(turn.start, 3))),
+                    end_time=Decimal(str(round(turn.end, 3)))
+                ))
+        elif hasattr(diarization, 'speaker_diarization'):
+            # Newer pyannote (>=3.4) returns DiarizeOutput with speaker_diarization
+            for turn, speaker in diarization.speaker_diarization:
+                segments.append(SpeakerSegment(
+                    speaker=str(speaker),
+                    start_time=Decimal(str(round(turn.start, 3))),
+                    end_time=Decimal(str(round(turn.end, 3)))
+                ))
+        else:
+            # Fallback: try iterating directly
+            logger.warning(f"Unknown diarization output type: {type(diarization)}, attrs: {dir(diarization)}")
+            for item in diarization:
+                segments.append(SpeakerSegment(
+                    speaker=str(getattr(item, 'speaker', 'unknown')),
+                    start_time=Decimal(str(round(getattr(item, 'start', 0), 3))),
+                    end_time=Decimal(str(round(getattr(item, 'end', 0), 3)))
+                ))
 
         logger.info(f"Found {len(segments)} speaker segments")
         return segments
