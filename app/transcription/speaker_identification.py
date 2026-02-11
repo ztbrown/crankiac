@@ -297,9 +297,12 @@ class SpeakerIdentifier:
                 if label in label_to_name:
                     continue
                 if label not in cluster_embeddings:
-                    # No embedding extracted — likely too short/noisy, treat as noise
-                    label_to_name[label] = None
-                    logger.info(f"  {label} -> [noise] (no embedding)")
+                    # No embedding extracted — assign to first expected speaker as fallback
+                    for name in expected_speakers:
+                        if name in references:
+                            label_to_name[label] = name
+                            logger.info(f"  {label} -> {name} (no embedding, fallback)")
+                            break
                     continue
                 # Find best matching expected speaker
                 best_name = None
@@ -310,12 +313,8 @@ class SpeakerIdentifier:
                     if score > best_score:
                         best_score = score
                         best_name = name
-                if best_score >= DEFAULT_NOISE_FLOOR:
-                    label_to_name[label] = best_name
-                    logger.info(f"  {label} -> {best_name} (score={best_score:.3f}, forced)")
-                else:
-                    label_to_name[label] = None
-                    logger.info(f"  {label} -> [noise] (score={best_score:.3f}, below floor {DEFAULT_NOISE_FLOOR})")
+                label_to_name[label] = best_name
+                logger.info(f"  {label} -> {best_name} (score={best_score:.3f}, forced)")
         else:
             # No expected speakers — label unmatched clusters as Unknown
             unknown_counter = 1
