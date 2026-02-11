@@ -7,18 +7,7 @@ from app.transcription.diarization import (
     SpeakerDiarizer,
     assign_speakers_to_words,
     get_diarizer,
-    KNOWN_SPEAKERS
 )
-
-
-@pytest.mark.unit
-def test_known_speakers():
-    """Test that known speakers list contains expected hosts."""
-    assert "Matt" in KNOWN_SPEAKERS
-    assert "Will" in KNOWN_SPEAKERS
-    assert "Felix" in KNOWN_SPEAKERS
-    assert "Amber" in KNOWN_SPEAKERS
-    assert "Virgil" in KNOWN_SPEAKERS
 
 
 @pytest.mark.unit

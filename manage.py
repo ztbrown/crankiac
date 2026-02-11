@@ -21,7 +21,9 @@ def process(args):
         cleanup_audio=not args.no_cleanup,
         enable_diarization=args.diarize,
         num_speakers=args.num_speakers,
-        vocabulary_file=args.vocab
+        vocabulary_file=args.vocab,
+        enable_speaker_id=args.identify_speakers,
+        match_threshold=args.match_threshold,
     )
 
     # Handle single episode processing by ID
@@ -199,7 +201,9 @@ def diarize(args):
     pipeline = EpisodePipeline(
         cleanup_audio=not args.no_cleanup,
         enable_diarization=True,
-        num_speakers=args.num_speakers
+        num_speakers=args.num_speakers,
+        enable_speaker_id=args.identify_speakers,
+        match_threshold=args.match_threshold,
     )
 
     repo = EpisodeRepository()
@@ -537,6 +541,35 @@ def cleanup_episodes(args):
     print("\n✅ Done!")
 
 
+def enroll_speaker_cmd(args):
+    """Enroll a speaker from reference audio clips."""
+    from app.transcription.enroll import enroll_speaker, enroll_all_speakers
+
+    if args.all:
+        print(f"Enrolling all speakers from {args.audio_dir}...")
+        enrolled = enroll_all_speakers(
+            audio_dir=args.audio_dir,
+            output_dir=args.output_dir,
+        )
+        print(f"\nEnrolled {len(enrolled)} speakers: {', '.join(enrolled)}")
+    else:
+        if not args.name:
+            print("Error: --name is required (or use --all to enroll all speakers)")
+            sys.exit(1)
+
+        print(f"Enrolling speaker '{args.name}' from {args.audio_dir}/{args.name}/...")
+        try:
+            npy_path = enroll_speaker(
+                name=args.name,
+                audio_dir=args.audio_dir,
+                output_dir=args.output_dir,
+            )
+            print(f"Saved embedding to {npy_path}")
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+
+
 def youtube_align(args):
     """Align Patreon transcripts with YouTube captions to compute timestamp offsets."""
     from app.db.connection import get_cursor
@@ -643,6 +676,9 @@ def main():
     # Diarization options
     process_parser.add_argument("--diarize", action="store_true", help="Enable speaker diarization")
     process_parser.add_argument("--num-speakers", type=int, default=None, help="Hint for number of speakers (optional)")
+    # Speaker identification options
+    process_parser.add_argument("--identify-speakers", action="store_true", help="Enable speaker identification via voice embeddings")
+    process_parser.add_argument("--match-threshold", type=float, default=0.70, help="Cosine similarity threshold for speaker matching (default: 0.70)")
     # Episode selection by number
     process_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to process (e.g., 1003,1006)")
     # Vocabulary hints
@@ -656,6 +692,9 @@ def main():
     diarize_parser.add_argument("--episode", type=int, metavar="ID", help="Diarize a specific episode by database ID")
     diarize_parser.add_argument("--num-speakers", type=int, default=None, help="Hint for number of speakers (optional)")
     diarize_parser.add_argument("--no-cleanup", action="store_true", help="Keep audio files after diarization")
+    # Speaker identification options
+    diarize_parser.add_argument("--identify-speakers", action="store_true", help="Enable speaker identification via voice embeddings")
+    diarize_parser.add_argument("--match-threshold", type=float, default=0.70, help="Cosine similarity threshold for speaker matching (default: 0.70)")
 
     # youtube-fetch command
     fetch_parser = subparsers.add_parser("youtube-fetch", help="Fetch YouTube videos and save to JSON")
@@ -695,6 +734,13 @@ def main():
     cleanup_parser.add_argument("--keep", required=True, help="Comma-separated episode numbers to keep (e.g., 1003,1004,1005,1006)")
     cleanup_parser.add_argument("--confirm", action="store_true", help="Actually delete (without this, runs in dry-run mode)")
 
+    # enroll-speaker command
+    enroll_parser = subparsers.add_parser("enroll-speaker", help="Enroll speaker(s) from reference audio clips")
+    enroll_parser.add_argument("--name", help="Speaker name (must match a subdirectory in reference audio dir)")
+    enroll_parser.add_argument("--all", action="store_true", help="Enroll all speakers with reference audio directories")
+    enroll_parser.add_argument("--audio-dir", default="data/reference_audio", help="Root directory with speaker subdirectories (default: data/reference_audio)")
+    enroll_parser.add_argument("--output-dir", default="data/speaker_embeddings", help="Directory to save embeddings (default: data/speaker_embeddings)")
+
     args = parser.parse_args()
 
     if args.command == "migrate":
@@ -715,6 +761,8 @@ def main():
         youtube_align(args)
     elif args.command == "cleanup-episodes":
         cleanup_episodes(args)
+    elif args.command == "enroll-speaker":
+        enroll_speaker_cmd(args)
     else:
         parser.print_help()
         sys.exit(1)

@@ -443,3 +443,75 @@ def test_pipeline_skips_empty_lines_in_vocabulary(tmp_path):
          patch("app.pipeline.EpisodeRepository"):
         p = EpisodePipeline(session_id="test-session", vocabulary_file=str(vocab_file))
         assert p.vocabulary_hints == ["Name One", "Name Two", "Name Three"]
+
+
+# Tests for speaker identification integration
+
+@pytest.mark.unit
+def test_pipeline_accepts_speaker_id_params():
+    """Test that EpisodePipeline accepts speaker identification parameters."""
+    with patch("app.pipeline.PatreonClient"), \
+         patch("app.pipeline.AudioDownloader"), \
+         patch("app.pipeline.get_transcriber"), \
+         patch("app.pipeline.TranscriptStorage"), \
+         patch("app.pipeline.EpisodeRepository"), \
+         patch("app.transcription.speaker_identification.SpeakerIdentifier"):
+        p = EpisodePipeline(
+            session_id="test-session",
+            enable_speaker_id=True,
+            match_threshold=0.80,
+            embeddings_dir="/some/dir",
+        )
+        assert p.enable_speaker_id is True
+        assert p.speaker_identifier is not None
+
+
+@pytest.mark.unit
+def test_pipeline_speaker_id_disabled_by_default(pipeline):
+    """Speaker identification is disabled by default."""
+    assert pipeline.enable_speaker_id is False
+    assert pipeline.speaker_identifier is None
+
+
+@pytest.mark.unit
+def test_process_episode_with_speaker_id():
+    """Speaker identification runs after diarization when enabled."""
+    with patch("app.pipeline.PatreonClient"), \
+         patch("app.pipeline.AudioDownloader"), \
+         patch("app.pipeline.get_transcriber"), \
+         patch("app.pipeline.TranscriptStorage"), \
+         patch("app.pipeline.EpisodeRepository"), \
+         patch("app.pipeline.get_diarizer") as mock_get_diarizer, \
+         patch("app.transcription.speaker_identification.SpeakerIdentifier") as mock_si_cls:
+
+        # Set up speaker identifier mock
+        mock_si = mock_si_cls.return_value
+        mock_si.identify.return_value = {"SPEAKER_00": "Matt", "SPEAKER_01": "Will"}
+        mock_si.relabel_segments.side_effect = lambda segs, lmap: segs
+
+        p = EpisodePipeline(
+            session_id="test-session",
+            enable_diarization=True,
+            enable_speaker_id=True,
+        )
+
+        # Set up diarizer mock
+        from app.transcription.diarization import SpeakerSegment
+        speaker_segs = [
+            SpeakerSegment(speaker="SPEAKER_00", start_time=0.0, end_time=1.0),
+            SpeakerSegment(speaker="SPEAKER_01", start_time=1.0, end_time=2.0),
+        ]
+        p.diarizer.diarize.return_value = speaker_segs
+
+        episode = make_episode()
+        p.downloader.download.return_value = DownloadResult(
+            success=True, file_path="/tmp/test.mp3", file_size=1000
+        )
+        p.transcriber.transcribe.return_value = make_transcript_result()
+        p.storage.store_transcript.return_value = 3
+
+        result = p.process_episode(episode)
+
+        assert result is True
+        mock_si.identify.assert_called_once()
+        mock_si.relabel_segments.assert_called_once()

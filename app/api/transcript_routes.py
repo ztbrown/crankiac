@@ -3,7 +3,8 @@ from typing import Optional
 from flask import Blueprint, jsonify, request
 from app.db.connection import get_cursor
 from app.filters import EpisodeFilter
-from app.transcription.diarization import KNOWN_SPEAKERS
+# Known speakers for display mapping (SPEAKER_XX -> real name)
+KNOWN_SPEAKERS = ["Matt", "Will", "Felix", "Amber", "Virgil", "Derek Davison"]
 
 transcript_api = Blueprint("transcript_api", __name__, url_prefix="/api/transcripts")
 

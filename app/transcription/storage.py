@@ -41,6 +41,40 @@ class TranscriptStorage:
 
         return self.bulk_insert(segments)
 
+    def _resolve_speaker_id(self, cursor, speaker_name: Optional[str]) -> Optional[int]:
+        """Resolve a speaker name to a speaker_id, creating the speaker if needed.
+
+        Args:
+            cursor: Database cursor.
+            speaker_name: Speaker name to resolve (e.g., "Matt", "SPEAKER_00").
+
+        Returns:
+            Speaker ID from the speakers table, or None if speaker_name is None.
+        """
+        if not speaker_name:
+            return None
+
+        # Skip generic diarization labels (SPEAKER_00, etc.) — no need to create entries
+        if speaker_name.startswith("SPEAKER_"):
+            return None
+
+        # Try to find existing speaker
+        cursor.execute(
+            "SELECT id FROM speakers WHERE name = %s",
+            (speaker_name,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return row["id"]
+
+        # Create new speaker
+        cursor.execute(
+            "INSERT INTO speakers (name) VALUES (%s) ON CONFLICT (name) DO UPDATE SET name = %s RETURNING id",
+            (speaker_name, speaker_name)
+        )
+        row = cursor.fetchone()
+        return row["id"] if row else None
+
     def bulk_insert(self, segments: list[TranscriptSegment]) -> int:
         """
         Insert transcript segments in batches for performance.
@@ -57,23 +91,30 @@ class TranscriptStorage:
         total_inserted = 0
 
         with get_cursor() as cursor:
+            # Pre-resolve speaker IDs for all unique speaker names
+            unique_speakers = set(s.speaker for s in segments if s.speaker)
+            speaker_id_cache = {}
+            for speaker_name in unique_speakers:
+                speaker_id_cache[speaker_name] = self._resolve_speaker_id(cursor, speaker_name)
+
             # Process in batches
             for i in range(0, len(segments), BATCH_SIZE):
                 batch = segments[i:i + BATCH_SIZE]
                 values = [
-                    (s.episode_id, s.word, str(s.start_time), str(s.end_time), s.segment_index, s.speaker)
+                    (s.episode_id, s.word, str(s.start_time), str(s.end_time),
+                     s.segment_index, s.speaker, speaker_id_cache.get(s.speaker))
                     for s in batch
                 ]
 
                 # Use execute_values for efficient batch insert
                 args_str = ",".join(
-                    cursor.mogrify("(%s, %s, %s, %s, %s, %s)", v).decode("utf-8")
+                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s)", v).decode("utf-8")
                     for v in values
                 )
 
                 cursor.execute(f"""
                     INSERT INTO transcript_segments
-                    (episode_id, word, start_time, end_time, segment_index, speaker)
+                    (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id)
                     VALUES {args_str}
                 """)
 
@@ -161,13 +202,20 @@ class TranscriptStorage:
 
         updated = 0
         with get_cursor() as cursor:
+            # Pre-resolve speaker IDs for all unique speaker names
+            unique_speakers = set(s.speaker for s in segments if s.speaker)
+            speaker_id_cache = {}
+            for speaker_name in unique_speakers:
+                speaker_id_cache[speaker_name] = self._resolve_speaker_id(cursor, speaker_name)
+
             for batch_start in range(0, len(segments), BATCH_SIZE):
                 batch = segments[batch_start:batch_start + BATCH_SIZE]
                 for seg in batch:
                     if seg.id is not None:
+                        speaker_id = speaker_id_cache.get(seg.speaker)
                         cursor.execute(
-                            "UPDATE transcript_segments SET speaker = %s WHERE id = %s",
-                            (seg.speaker, seg.id)
+                            "UPDATE transcript_segments SET speaker = %s, speaker_id = %s WHERE id = %s",
+                            (seg.speaker, speaker_id, seg.id)
                         )
                         updated += cursor.rowcount
 

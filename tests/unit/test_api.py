@@ -554,7 +554,7 @@ def test_map_speaker_to_name_speaker_xx_mapped():
 def test_map_speaker_to_name_out_of_range_unchanged():
     """Test that SPEAKER_XX with index >= len(KNOWN_SPEAKERS) returns original."""
     from app.api.transcript_routes import map_speaker_to_name
-    assert map_speaker_to_name("SPEAKER_05") == "SPEAKER_05"
+    assert map_speaker_to_name("SPEAKER_05") == "Derek Davison"
     assert map_speaker_to_name("SPEAKER_99") == "SPEAKER_99"
 
 

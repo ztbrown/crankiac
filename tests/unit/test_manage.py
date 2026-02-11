@@ -76,7 +76,10 @@ class TestProcessCommandIntegration:
                     episode=None,
                     title=None,
                     vocab=None,
-                    episodes=None
+                    episodes=None,
+                    identify_speakers=False,
+                    match_threshold=0.70,
+                    force=False,
                 )
 
                 manage.process(args)
@@ -124,7 +127,10 @@ class TestProcessCommandIntegration:
                     episode=None,
                     title=None,
                     vocab=None,
-                    episodes=None
+                    episodes=None,
+                    identify_speakers=False,
+                    match_threshold=0.70,
+                    force=False,
                 )
 
                 manage.process(args)
@@ -172,7 +178,10 @@ class TestProcessCommandIntegration:
                     episode=None,
                     title=None,
                     vocab=None,
-                    episodes=None
+                    episodes=None,
+                    identify_speakers=False,
+                    match_threshold=0.70,
+                    force=False,
                 )
 
                 manage.process(args)

@@ -29,7 +29,10 @@ class EpisodePipeline:
         enable_diarization: bool = False,
         hf_token: Optional[str] = None,
         num_speakers: Optional[int] = None,
-        vocabulary_file: Optional[str] = None
+        vocabulary_file: Optional[str] = None,
+        enable_speaker_id: bool = False,
+        match_threshold: float = 0.70,
+        embeddings_dir: str = "data/speaker_embeddings",
     ):
         """
         Initialize the pipeline.
@@ -43,6 +46,9 @@ class EpisodePipeline:
             hf_token: HuggingFace token for pyannote (or from HF_TOKEN env).
             num_speakers: Expected number of speakers (optional hint).
             vocabulary_file: Path to file with vocabulary hints (one per line).
+            enable_speaker_id: Whether to identify speakers via voice embeddings.
+            match_threshold: Cosine similarity threshold for speaker matching.
+            embeddings_dir: Directory containing reference speaker embeddings.
         """
         self.session_id = session_id or os.environ.get("PATREON_SESSION_ID")
         if not self.session_id:
@@ -50,6 +56,7 @@ class EpisodePipeline:
 
         self.cleanup_audio = cleanup_audio
         self.enable_diarization = enable_diarization
+        self.enable_speaker_id = enable_speaker_id
         self.patreon = PatreonClient(self.session_id)
         self.downloader = AudioDownloader(self.session_id, download_dir)
         self.storage = TranscriptStorage()
@@ -70,6 +77,20 @@ class EpisodePipeline:
                 logger.info("Speaker diarization enabled")
             except Exception as e:
                 logger.warning(f"Could not initialize diarizer: {e}. Diarization disabled.")
+
+        # Initialize speaker identifier if enabled
+        self.speaker_identifier = None
+        if enable_speaker_id:
+            try:
+                from app.transcription.speaker_identification import SpeakerIdentifier
+                self.speaker_identifier = SpeakerIdentifier(
+                    embeddings_dir=embeddings_dir,
+                    match_threshold=match_threshold,
+                    hf_token=hf_token,
+                )
+                logger.info("Speaker identification enabled")
+            except Exception as e:
+                logger.warning(f"Could not initialize speaker identifier: {e}. Speaker ID disabled.")
 
     def _load_vocabulary(self, vocabulary_file: Optional[str]) -> list[str]:
         """Load vocabulary hints from file.
@@ -180,6 +201,22 @@ class EpisodePipeline:
                 logger.info(f"  Running speaker diarization...")
                 try:
                     speaker_segments = self.diarizer.diarize(download_result.file_path)
+
+                    # Speaker identification (optional) — map labels to real names
+                    if self.speaker_identifier:
+                        logger.info(f"  Running speaker identification...")
+                        try:
+                            label_map = self.speaker_identifier.identify(
+                                download_result.file_path, speaker_segments
+                            )
+                            if label_map:
+                                speaker_segments = self.speaker_identifier.relabel_segments(
+                                    speaker_segments, label_map
+                                )
+                                logger.info(f"  Identified speakers: {label_map}")
+                        except Exception as e:
+                            logger.warning(f"  Speaker identification failed (continuing with generic labels): {e}")
+
                     transcript.segments = assign_speakers_to_words(
                         transcript.segments, speaker_segments
                     )
@@ -329,6 +366,21 @@ class EpisodePipeline:
             logger.info(f"  Running speaker diarization...")
             speaker_segments = self.diarizer.diarize(download_result.file_path)
             logger.info(f"  Found {len(speaker_segments)} speaker segments")
+
+            # Speaker identification (optional) — map labels to real names
+            if self.speaker_identifier:
+                logger.info(f"  Running speaker identification...")
+                try:
+                    label_map = self.speaker_identifier.identify(
+                        download_result.file_path, speaker_segments
+                    )
+                    if label_map:
+                        speaker_segments = self.speaker_identifier.relabel_segments(
+                            speaker_segments, label_map
+                        )
+                        logger.info(f"  Identified speakers: {label_map}")
+                except Exception as e:
+                    logger.warning(f"  Speaker identification failed (continuing with generic labels): {e}")
 
             # Assign speakers to words
             from app.transcription.diarization import assign_speakers_to_words
