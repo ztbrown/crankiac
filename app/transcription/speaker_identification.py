@@ -90,9 +90,18 @@ class SpeakerIdentifier:
         logger.info(f"Loaded {len(self._references)} reference embeddings")
         return self._references
 
+    def _load_audio(self, audio_path: str) -> dict:
+        """Load audio as waveform dict to avoid torchcodec issues on Windows."""
+        try:
+            import torchaudio
+            waveform, sample_rate = torchaudio.load(audio_path)
+            return {"waveform": waveform, "sample_rate": sample_rate}
+        except Exception:
+            return {"audio": audio_path}
+
     def extract_cluster_embedding(
         self,
-        audio_path: str,
+        audio_input,
         segments: list,
         speaker_label: str,
     ) -> np.ndarray:
@@ -102,7 +111,7 @@ class SpeakerIdentifier:
         for each segment, and returns the mean embedding.
 
         Args:
-            audio_path: Path to the audio file.
+            audio_input: Pre-loaded audio dict or path to audio file.
             segments: List of SpeakerSegment objects from diarization.
             speaker_label: The diarization label (e.g., "SPEAKER_00").
 
@@ -132,7 +141,7 @@ class SpeakerIdentifier:
 
             try:
                 segment = Segment(start, end)
-                embedding = self.model.crop(audio_path, segment)
+                embedding = self.model.crop(audio_input, segment)
                 embeddings.append(embedding)
             except Exception as e:
                 logger.debug(f"Failed to extract embedding for segment {start}-{end}: {e}")
@@ -217,12 +226,15 @@ class SpeakerIdentifier:
 
         logger.info(f"Identifying {len(unique_labels)} speakers against {len(references)} references")
 
+        # Pre-load audio to avoid torchcodec issues on Windows
+        audio_input = self._load_audio(audio_path)
+
         # Extract embeddings for each cluster
         cluster_embeddings = {}
         for label in unique_labels:
             try:
                 embedding = self.extract_cluster_embedding(
-                    audio_path, speaker_segments, label
+                    audio_input, speaker_segments, label
                 )
                 cluster_embeddings[label] = embedding
             except ValueError as e:
