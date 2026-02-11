@@ -58,7 +58,11 @@ class SpeakerDiarizer:
                     "pyannote/speaker-diarization-3.1",
                     token=self.hf_token
                 )
-                logger.info("Loaded pyannote speaker diarization pipeline")
+                if torch.cuda.is_available():
+                    self._pipeline = self._pipeline.to(torch.device("cuda"))
+                    logger.info("Loaded pyannote speaker diarization pipeline (GPU)")
+                else:
+                    logger.info("Loaded pyannote speaker diarization pipeline (CPU)")
             except ImportError:
                 raise ImportError(
                     "pyannote.audio is required for speaker diarization. "
