@@ -977,6 +977,28 @@ def update_segment_word(segment_id: int):
     })
 
 
+@transcript_api.route("/segments/<int:segment_id>", methods=["DELETE"])
+def delete_segment(segment_id: int):
+    """
+    Delete a transcript segment.
+
+    Returns:
+        JSON with deletion confirmation or 404 if not found.
+    """
+    from app.transcription.storage import TranscriptStorage
+
+    storage = TranscriptStorage()
+    success = storage.delete_segment(segment_id)
+
+    if not success:
+        return jsonify({"error": "Segment not found"}), 404
+
+    return jsonify({
+        "id": segment_id,
+        "deleted": True
+    })
+
+
 # Speaker management endpoints
 
 @transcript_api.route("/speakers", methods=["POST"])
