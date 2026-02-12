@@ -333,6 +333,23 @@ class TranscriptStorage:
             )
             return cursor.rowcount > 0
 
+    def delete_segment(self, segment_id: int) -> bool:
+        """
+        Delete a transcript segment by ID.
+
+        Args:
+            segment_id: ID of the segment to delete.
+
+        Returns:
+            True if segment was found and deleted, False otherwise.
+        """
+        with get_cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM transcript_segments WHERE id = %s",
+                (segment_id,)
+            )
+            return cursor.rowcount > 0
+
     def get_all_speakers(self, search: Optional[str] = None) -> list[dict]:
         """
         Get all speakers from the speakers table, optionally filtered by search term.

@@ -808,6 +808,36 @@ def test_update_segment_word_not_found(client):
         assert "not found" in response.json["error"].lower()
 
 
+# Tests for DELETE /api/transcripts/segments/<id> endpoint
+@pytest.mark.unit
+def test_delete_segment_success(client):
+    """Test successful segment deletion."""
+    with patch("app.transcription.storage.TranscriptStorage") as mock_storage_class:
+        mock_storage = MagicMock()
+        mock_storage_class.return_value = mock_storage
+        mock_storage.delete_segment.return_value = True
+
+        response = client.delete("/api/transcripts/segments/123")
+        assert response.status_code == 200
+        data = response.json
+        assert data["id"] == 123
+        assert data["deleted"] is True
+
+
+@pytest.mark.unit
+def test_delete_segment_not_found(client):
+    """Test that deleting non-existent segment returns 404."""
+    with patch("app.transcription.storage.TranscriptStorage") as mock_storage_class:
+        mock_storage = MagicMock()
+        mock_storage_class.return_value = mock_storage
+        mock_storage.delete_segment.return_value = False
+
+        response = client.delete("/api/transcripts/segments/999")
+        assert response.status_code == 404
+        assert "error" in response.json
+        assert "not found" in response.json["error"].lower()
+
+
 # Tests for GET /api/transcripts/episode/<id>/speakers endpoint
 @pytest.mark.unit
 def test_get_episode_speakers_success(client):
