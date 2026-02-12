@@ -264,30 +264,29 @@ class SpeakerIdentifier:
             logger.warning("Could not extract any cluster embeddings")
             return {}, {}
 
-        # Greedy assignment: compute all scores, assign best first
-        scores = []
-        for label, cluster_emb in cluster_embeddings.items():
-            for name, ref_emb in references.items():
-                score = self.cosine_similarity(cluster_emb, ref_emb)
-                scores.append((score, label, name))
+        # Hungarian algorithm: optimal 1:1 assignment via cost matrix
+        from scipy.optimize import linear_sum_assignment
 
-        # Sort by score descending
-        scores.sort(key=lambda x: x[0], reverse=True)
+        # Build cost matrix (negate similarity for minimization)
+        labels = list(cluster_embeddings.keys())
+        names = list(references.keys())
+        cost_matrix = np.zeros((len(labels), len(names)))
+        for i, label in enumerate(labels):
+            for j, name in enumerate(names):
+                cost_matrix[i, j] = -self.cosine_similarity(cluster_embeddings[label], references[name])
+
+        # Find optimal assignment (handles rectangular matrices)
+        row_idx, col_idx = linear_sum_assignment(cost_matrix)
 
         label_to_name = {}
         label_to_score = {}
-        assigned_labels = set()
-        assigned_names = set()
 
-        for score, label, name in scores:
-            if label in assigned_labels or name in assigned_names:
-                continue
+        for i, j in zip(row_idx, col_idx):
+            score = -cost_matrix[i, j]
             if score >= self.match_threshold:
-                label_to_name[label] = name
-                label_to_score[label] = score
-                assigned_labels.add(label)
-                assigned_names.add(name)
-                logger.info(f"  {label} -> {name} (score={score:.3f})")
+                label_to_name[labels[i]] = names[j]
+                label_to_score[labels[i]] = score
+                logger.info(f"  {labels[i]} -> {names[j]} (score={score:.3f})")
 
         # When expected_speakers is set, assign unmatched clusters to their
         # closest expected speaker regardless of score.
