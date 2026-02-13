@@ -37,6 +37,10 @@
                     Edit Text
                 </button>
             </div>
+            <div id="speaker-palette" class="speaker-palette" style="display: none;">
+                <label class="palette-label">Paint:</label>
+                <div id="speaker-palette-buttons" class="speaker-palette-buttons"></div>
+            </div>
         </div>
 
         <div id="loading-container" class="loading-container" style="display: none;">
@@ -84,6 +88,15 @@
 
     <!-- Overlay for dialog -->
     <div id="dialog-overlay" class="dialog-overlay" style="display: none;"></div>
+
+    <!-- Audio player bar -->
+    <audio id="audio-element" preload="auto"></audio>
+    <div id="audio-player" class="audio-player" style="display: none;">
+        <button id="play-pause-btn" class="play-pause-btn" title="Play/Pause">&#9654;</button>
+        <span id="audio-time" class="audio-time">0:00</span>
+        <input type="range" id="seek-bar" class="seek-bar" min="0" max="100" value="0" step="0.1">
+        <span id="audio-duration" class="audio-duration">0:00</span>
+    </div>
 
     <!-- Toast notification -->
     <div id="toast-container" class="toast-container"></div>
