@@ -572,6 +572,28 @@ body.has-audio-player .transcript-container {
     margin-bottom: 72px;
 }
 
+/* Paragraph delete button */
+.paragraph-delete-btn {
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    margin-left: 6px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.paragraph:hover .paragraph-delete-btn {
+    opacity: 1;
+}
+
+.paragraph-delete-btn:hover {
+    color: #e53e3e;
+}
+
 /* Timestamp spans next to speaker labels */
 .paragraph-timestamp {
     font-size: 12px;

@@ -493,6 +493,17 @@ class TranscriptEditor {
                 speakerLabel.textContent = `[${speakerName}]`;
             }
 
+            // Add delete button to speaker label
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "paragraph-delete-btn";
+            deleteBtn.innerHTML = "&times;";
+            deleteBtn.title = "Delete paragraph";
+            deleteBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                this.handleDeleteParagraph(paragraph);
+            });
+            speakerLabel.appendChild(deleteBtn);
+
             // Add timestamp span next to speaker label
             if (paragraph.start_time !== null && paragraph.start_time !== undefined) {
                 const timestamp = document.createElement("span");
@@ -678,6 +689,31 @@ class TranscriptEditor {
             textDiv.textContent = originalText;
             this.showToast("Failed to update text: " + error.message, "error");
             setTimeout(() => textDiv.classList.remove("error"), 2000);
+        }
+    }
+
+    async handleDeleteParagraph(paragraph) {
+        const segmentIds = paragraph.segment_ids;
+        if (!segmentIds || segmentIds.length === 0) return;
+
+        const preview = paragraph.text.length > 60
+            ? paragraph.text.substring(0, 60) + "..."
+            : paragraph.text;
+        if (!confirm(`Delete this paragraph?\n\n"${preview}"`)) return;
+
+        try {
+            for (const segmentId of segmentIds) {
+                const response = await fetch(`/api/transcripts/segments/${segmentId}`, {
+                    method: "DELETE"
+                });
+                if (!response.ok && response.status !== 404) {
+                    throw new Error(`Failed to delete segment ${segmentId}`);
+                }
+            }
+            this.showToast(`Deleted ${segmentIds.length} segments`, "success");
+            await this.loadTranscript(this.currentEpisodeId);
+        } catch (error) {
+            this.showToast("Failed to delete paragraph: " + error.message, "error");
         }
     }
 
