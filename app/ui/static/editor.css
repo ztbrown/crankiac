@@ -490,6 +490,173 @@ body {
     font-weight: 700;
 }
 
+/* Audio player bar */
+.audio-player {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: #1a1a2e;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    z-index: 500;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.play-pause-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: #0066cc;
+    color: white;
+    border-radius: 50%;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.play-pause-btn:hover {
+    background: #0052a3;
+}
+
+.audio-time,
+.audio-duration {
+    color: #ccc;
+    font-size: 13px;
+    font-family: monospace;
+    min-width: 40px;
+    flex-shrink: 0;
+}
+
+.seek-bar {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #333;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.seek-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #0066cc;
+    cursor: pointer;
+}
+
+.seek-bar::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #0066cc;
+    cursor: pointer;
+    border: none;
+}
+
+body.has-audio-player .toast-container {
+    bottom: 72px;
+}
+
+body.has-audio-player .transcript-container {
+    margin-bottom: 72px;
+}
+
+/* Timestamp spans next to speaker labels */
+.paragraph-timestamp {
+    font-size: 12px;
+    color: #999;
+    font-family: monospace;
+    margin-left: 8px;
+    cursor: pointer;
+}
+
+.paragraph-timestamp:hover {
+    color: #0066cc;
+}
+
+/* Active paragraph highlight (audio playback) */
+.paragraph.audio-active {
+    border-left: 3px solid #0066cc;
+    padding-left: 12px;
+    background: rgba(0, 102, 204, 0.03);
+    transition: all 0.2s;
+}
+
+/* Speaker palette toolbar */
+.speaker-palette {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 16px;
+    padding-left: 16px;
+    border-left: 1px solid #ddd;
+}
+
+.palette-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    flex-shrink: 0;
+}
+
+.speaker-palette-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.speaker-palette-btn {
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 2px solid #ddd;
+    border-radius: 16px;
+    background: white;
+    color: #555;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.speaker-palette-btn:hover {
+    border-color: #0066cc;
+    color: #0066cc;
+}
+
+.speaker-palette-btn.armed {
+    background: #0066cc;
+    border-color: #0066cc;
+    color: white;
+}
+
+/* Paint mode */
+.transcript-container.paint-mode {
+    cursor: crosshair;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.transcript-container.paint-mode .paragraph:hover {
+    background: rgba(0, 102, 204, 0.06);
+    border-radius: 4px;
+}
+
+.transcript-container.paint-mode .paragraph {
+    cursor: crosshair;
+    transition: background 0.15s;
+}
+
 /* Responsive - Tablet */
 @media (max-width: 1024px) {
     .container {
