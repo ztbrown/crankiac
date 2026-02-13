@@ -3,7 +3,7 @@
 import pytest
 from app.api.app import create_app
 from app.db.connection import get_cursor
-from app.transcription.diarization import KNOWN_SPEAKERS
+from app.api.transcript_routes import KNOWN_SPEAKERS
 
 
 @pytest.fixture
