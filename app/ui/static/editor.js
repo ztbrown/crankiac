@@ -94,10 +94,16 @@ class TranscriptEditor {
         // Only in speaker mode with palette visible
         if (this.mode !== "speaker" || !this.currentEpisodeId) return;
 
-        // Escape: disarm current speaker
-        if (e.key === "Escape" && this.armedSpeaker) {
-            e.preventDefault();
-            this.toggleArmedSpeaker(this.armedSpeaker);
+        // Escape: toggle paint mode (disarm, or re-arm last speaker)
+        if (e.key === "Escape") {
+            if (this.armedSpeaker) {
+                this.lastArmedSpeaker = this.armedSpeaker;
+                e.preventDefault();
+                this.toggleArmedSpeaker(this.armedSpeaker);
+            } else if (this.lastArmedSpeaker) {
+                e.preventDefault();
+                this.toggleArmedSpeaker(this.lastArmedSpeaker);
+            }
             return;
         }
 
