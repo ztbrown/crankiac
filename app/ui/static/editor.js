@@ -254,6 +254,7 @@ class TranscriptEditor {
         this.episodeSpeakers.forEach((speaker, i) => {
             const btn = document.createElement("button");
             btn.className = "speaker-palette-btn";
+            btn.dataset.speakerName = speaker.name;
             if (i < 9) {
                 const badge = document.createElement("span");
                 badge.className = "palette-key-badge";
@@ -279,7 +280,7 @@ class TranscriptEditor {
         // Update button states
         const buttons = this.speakerPaletteButtons.querySelectorAll(".speaker-palette-btn");
         buttons.forEach(btn => {
-            btn.classList.toggle("armed", this.armedSpeaker && btn.textContent === this.armedSpeaker.name);
+            btn.classList.toggle("armed", this.armedSpeaker && btn.dataset.speakerName === this.armedSpeaker.name);
         });
     }
 
