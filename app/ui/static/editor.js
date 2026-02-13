@@ -80,6 +80,36 @@ class TranscriptEditor {
 
         // Handle text selection
         document.addEventListener("mouseup", () => this.handleTextSelection());
+
+        // Keyboard shortcuts for paint mode
+        document.addEventListener("keydown", (e) => this.handleKeyDown(e));
+    }
+
+    handleKeyDown(e) {
+        // Ignore if typing in an input/editable element
+        if (e.target.isContentEditable || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+            return;
+        }
+
+        // Only in speaker mode with palette visible
+        if (this.mode !== "speaker" || !this.currentEpisodeId) return;
+
+        // Escape: disarm current speaker
+        if (e.key === "Escape" && this.armedSpeaker) {
+            e.preventDefault();
+            this.toggleArmedSpeaker(this.armedSpeaker);
+            return;
+        }
+
+        // Number keys 1-9: arm speaker by palette position
+        const num = parseInt(e.key);
+        if (num >= 1 && num <= 9 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const speaker = this.episodeSpeakers[num - 1];
+            if (speaker) {
+                e.preventDefault();
+                this.toggleArmedSpeaker(speaker);
+            }
+        }
     }
 
     formatTime(seconds) {
@@ -221,10 +251,16 @@ class TranscriptEditor {
 
     renderSpeakerPalette() {
         this.speakerPaletteButtons.innerHTML = "";
-        this.episodeSpeakers.forEach(speaker => {
+        this.episodeSpeakers.forEach((speaker, i) => {
             const btn = document.createElement("button");
             btn.className = "speaker-palette-btn";
-            btn.textContent = speaker.name;
+            if (i < 9) {
+                const badge = document.createElement("span");
+                badge.className = "palette-key-badge";
+                badge.textContent = i + 1;
+                btn.appendChild(badge);
+            }
+            btn.appendChild(document.createTextNode(speaker.name));
             btn.addEventListener("click", () => this.toggleArmedSpeaker(speaker));
             this.speakerPaletteButtons.appendChild(btn);
         });
