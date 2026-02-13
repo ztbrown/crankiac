@@ -628,6 +628,23 @@ class TranscriptEditor {
                 updates.push({ segmentId, word: newWord });
             }
 
+            // Insert new words added beyond existing segments
+            const inserted = [];
+            let lastSegmentId = segmentIds[segmentIds.length - 1];
+            for (let i = segmentIds.length; i < newWords.length; i++) {
+                const response = await fetch(`/api/transcripts/segments/${lastSegmentId}/insert-after`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ word: newWords[i] })
+                });
+                if (!response.ok) {
+                    throw new Error(`Failed to insert word "${newWords[i]}"`);
+                }
+                const result = await response.json();
+                lastSegmentId = result.id;
+                inserted.push(result.id);
+            }
+
             // Delete excess segments (words removed by user)
             const deleted = [];
             for (let i = newWords.length; i < segmentIds.length; i++) {
@@ -648,6 +665,7 @@ class TranscriptEditor {
 
             const parts = [];
             if (updates.length > 0) parts.push(`${updates.length} updated`);
+            if (inserted.length > 0) parts.push(`${inserted.length} added`);
             if (deleted.length > 0) parts.push(`${deleted.length} deleted`);
             this.showToast(parts.join(", "), "success");
 

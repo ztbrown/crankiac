@@ -333,6 +333,50 @@ class TranscriptStorage:
             )
             return cursor.rowcount > 0
 
+    def insert_segment_after(self, after_segment_id: int, word: str) -> Optional[int]:
+        """
+        Insert a new segment after an existing one, copying its timing and speaker info.
+
+        Args:
+            after_segment_id: ID of the segment to insert after.
+            word: Word text for the new segment.
+
+        Returns:
+            ID of the newly created segment, or None if the reference segment wasn't found.
+        """
+        with get_cursor() as cursor:
+            # Get the reference segment
+            cursor.execute(
+                """SELECT episode_id, start_time, end_time, segment_index, speaker, speaker_id
+                   FROM transcript_segments WHERE id = %s""",
+                (after_segment_id,)
+            )
+            ref = cursor.fetchone()
+            if not ref:
+                return None
+
+            new_index = ref["segment_index"] + 1
+
+            # Shift subsequent segments to make room
+            cursor.execute(
+                """UPDATE transcript_segments
+                   SET segment_index = segment_index + 1
+                   WHERE episode_id = %s AND segment_index >= %s""",
+                (ref["episode_id"], new_index)
+            )
+
+            # Insert the new segment
+            cursor.execute(
+                """INSERT INTO transcript_segments
+                   (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (ref["episode_id"], word.strip(), ref["start_time"], ref["end_time"],
+                 new_index, ref["speaker"], ref["speaker_id"])
+            )
+            row = cursor.fetchone()
+            return row["id"] if row else None
+
     def delete_segment(self, segment_id: int) -> bool:
         """
         Delete a specific transcript segment.

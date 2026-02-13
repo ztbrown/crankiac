@@ -999,6 +999,32 @@ def delete_segment(segment_id: int):
     })
 
 
+@transcript_api.route("/segments/<int:segment_id>/insert-after", methods=["POST"])
+def insert_segment_after(segment_id: int):
+    """
+    Insert a new segment after an existing one, copying its timing and speaker.
+
+    Request body:
+        {"word": "text"}
+
+    Returns:
+        JSON with the new segment ID.
+    """
+    from app.transcription.storage import TranscriptStorage
+
+    data = request.get_json()
+    if not data or not data.get("word"):
+        return jsonify({"error": "word is required"}), 400
+
+    storage = TranscriptStorage()
+    new_id = storage.insert_segment_after(segment_id, data["word"])
+
+    if new_id is None:
+        return jsonify({"error": "Reference segment not found"}), 404
+
+    return jsonify({"id": new_id, "created": True}), 201
+
+
 # Speaker management endpoints
 
 @transcript_api.route("/speakers", methods=["POST"])
