@@ -643,8 +643,6 @@ body.has-audio-player .transcript-container {
 /* Paint mode */
 .transcript-container.paint-mode {
     cursor: crosshair;
-    user-select: none;
-    -webkit-user-select: none;
 }
 
 .transcript-container.paint-mode .paragraph:hover {

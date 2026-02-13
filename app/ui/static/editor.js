@@ -296,6 +296,48 @@ class TranscriptEditor {
         }
     }
 
+    async handleAssignArmedSpeaker() {
+        if (!this.selectedRange || !this.armedSpeaker) return;
+
+        let speaker = this.armedSpeaker;
+        if (!speaker.id) {
+            const match = this.speakers.find(s => s.name === speaker.name);
+            if (match) {
+                speaker.id = match.id;
+            } else {
+                const created = await this.createSpeaker(speaker.name);
+                if (!created) {
+                    this.showToast("Failed to create speaker", "error");
+                    return;
+                }
+                speaker.id = created.id;
+                this.speakers.push(created);
+            }
+        }
+
+        try {
+            const response = await fetch("/api/transcripts/assign-speaker", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    episode_id: this.currentEpisodeId,
+                    start_segment_id: this.selectedRange.startSegmentId,
+                    end_segment_id: this.selectedRange.endSegmentId,
+                    speaker_id: speaker.id
+                })
+            });
+
+            if (!response.ok) throw new Error("Failed to assign speaker");
+            const result = await response.json();
+            this.showToast(`Painted "${speaker.name}" on ${result.updated} segments`, "success");
+            window.getSelection().removeAllRanges();
+            this.selectedRange = null;
+            await this.loadTranscript(this.currentEpisodeId);
+        } catch (error) {
+            this.showToast("Failed to assign speaker: " + error.message, "error");
+        }
+    }
+
     async loadEpisodes() {
         this.showLoading("Loading episodes...");
         try {
@@ -507,9 +549,12 @@ class TranscriptEditor {
 
             // Consolidated click handler on paragraph
             paragraphDiv.addEventListener("click", (e) => {
-                // Priority 1: Armed speaker → paint mode
+                // Priority 1: Armed speaker → paint mode (only on simple click, not text selection)
                 if (this.armedSpeaker) {
-                    this.handleParagraphPaint(paragraphDiv);
+                    const selection = window.getSelection();
+                    if (!selection || selection.isCollapsed) {
+                        this.handleParagraphPaint(paragraphDiv);
+                    }
                     return;
                 }
                 // Priority 2: Audio seek (clicking on the paragraph body, not timestamps)
@@ -624,11 +669,6 @@ class TranscriptEditor {
             return;
         }
 
-        // Paint mode guard: don't open speaker dialog when painting
-        if (this.armedSpeaker) {
-            return;
-        }
-
         const selection = window.getSelection();
         if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
             return;
@@ -665,6 +705,12 @@ class TranscriptEditor {
             endSegmentId,
             text: selectedText
         };
+
+        // If a speaker is armed, assign selection directly (skip dialog)
+        if (this.armedSpeaker) {
+            this.handleAssignArmedSpeaker();
+            return;
+        }
 
         this.openSpeakerDialog(selectedText);
     }
