@@ -94,6 +94,17 @@ class EpisodePipeline:
             except Exception as e:
                 logger.warning(f"Could not initialize speaker identifier: {e}. Speaker ID disabled.")
 
+    def _resolve_audio_url(self, episode: Episode) -> Optional[str]:
+        """Fetch a fresh audio URL from Patreon, falling back to stored URL."""
+        if episode.patreon_id:
+            try:
+                fresh_url = self.patreon.get_audio_url(episode.patreon_id)
+                if fresh_url:
+                    return fresh_url
+            except Exception as e:
+                logger.warning(f"  Could not fetch fresh audio URL: {e}")
+        return episode.audio_url
+
     def _load_vocabulary(self, vocabulary_file: Optional[str]) -> list[str]:
         """Load vocabulary hints from file.
 
@@ -179,15 +190,16 @@ class EpisodePipeline:
             logger.info(f"  Already processed, skipping")
             return True
 
-        # Skip if no audio URL
-        if not episode.audio_url:
-            logger.warning(f"  No audio URL, skipping")
+        # Resolve audio URL (fresh from Patreon, fallback to stored)
+        audio_url = self._resolve_audio_url(episode)
+        if not audio_url:
+            logger.warning(f"  No audio URL available, skipping")
             return False
 
         try:
             # Download
             logger.info(f"  Downloading audio...")
-            download_result = self.downloader.download(episode.audio_url, episode.patreon_id)
+            download_result = self.downloader.download(audio_url, episode.patreon_id)
             if not download_result.success:
                 logger.error(f"  Download failed: {download_result.error}")
                 return False
@@ -341,9 +353,10 @@ class EpisodePipeline:
             logger.warning(f"  No transcript found, skipping")
             return False
 
-        # Skip if no audio URL
-        if not episode.audio_url:
-            logger.warning(f"  No audio URL, skipping")
+        # Resolve audio URL (fresh from Patreon, fallback to stored)
+        audio_url = self._resolve_audio_url(episode)
+        if not audio_url:
+            logger.warning(f"  No audio URL available, skipping")
             return False
 
         # Check if diarizer is available
@@ -354,7 +367,7 @@ class EpisodePipeline:
         try:
             # Download audio
             logger.info(f"  Downloading audio...")
-            download_result = self.downloader.download(episode.audio_url, episode.patreon_id)
+            download_result = self.downloader.download(audio_url, episode.patreon_id)
             if not download_result.success:
                 logger.error(f"  Download failed: {download_result.error}")
                 return False
