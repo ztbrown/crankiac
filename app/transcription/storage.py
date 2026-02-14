@@ -34,7 +34,8 @@ class TranscriptStorage:
                 start_time=seg.start_time,
                 end_time=seg.end_time,
                 segment_index=idx,
-                speaker=getattr(seg, 'speaker', None)
+                speaker=getattr(seg, 'speaker', None),
+                speaker_confidence=float(sc) if (sc := getattr(seg, 'speaker_confidence', None)) is not None else None,
             )
             for idx, seg in enumerate(result.segments)
         ]
@@ -102,19 +103,20 @@ class TranscriptStorage:
                 batch = segments[i:i + BATCH_SIZE]
                 values = [
                     (s.episode_id, s.word, str(s.start_time), str(s.end_time),
-                     s.segment_index, s.speaker, speaker_id_cache.get(s.speaker))
+                     s.segment_index, s.speaker, speaker_id_cache.get(s.speaker),
+                     float(s.speaker_confidence) if s.speaker_confidence is not None else None)
                     for s in batch
                 ]
 
                 # Use execute_values for efficient batch insert
                 args_str = ",".join(
-                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s)", v).decode("utf-8")
+                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s, %s)", v).decode("utf-8")
                     for v in values
                 )
 
                 cursor.execute(f"""
                     INSERT INTO transcript_segments
-                    (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id)
+                    (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id, speaker_confidence)
                     VALUES {args_str}
                 """)
 
