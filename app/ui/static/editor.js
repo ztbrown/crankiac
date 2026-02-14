@@ -57,7 +57,7 @@ class TranscriptEditor {
         this.audioTime = document.getElementById("audio-time");
         this.audioDuration = document.getElementById("audio-duration");
         this.speedBtn = document.getElementById("speed-btn");
-        this.playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+        this.playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
         this.currentSpeedIndex = 2; // 1x
     }
 
