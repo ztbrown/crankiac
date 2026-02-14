@@ -214,6 +214,8 @@ class TranscriptStorage:
                     if seg.id is not None:
                         speaker_id = speaker_id_cache.get(seg.speaker)
                         confidence = getattr(seg, 'speaker_confidence', None)
+                        if confidence is not None:
+                            confidence = float(confidence)
                         cursor.execute(
                             "UPDATE transcript_segments SET speaker = %s, speaker_id = %s, speaker_confidence = %s WHERE id = %s",
                             (seg.speaker, speaker_id, confidence, seg.id)
