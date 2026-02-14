@@ -145,6 +145,8 @@ class TestWhisperTranscriberInitialPrompt:
             mock_whisper_model.transcribe.assert_called_once_with(
                 temp_audio_file,
                 word_timestamps=True,
+                language="en",
+                condition_on_previous_text=False,
                 initial_prompt="Ben Franklin, Thomas Jefferson",
                 verbose=False,
             )
@@ -160,6 +162,8 @@ class TestWhisperTranscriberInitialPrompt:
             mock_whisper_model.transcribe.assert_called_once_with(
                 temp_audio_file,
                 word_timestamps=True,
+                language="en",
+                condition_on_previous_text=False,
                 initial_prompt=None,
                 verbose=False,
             )
