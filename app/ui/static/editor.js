@@ -892,8 +892,8 @@ class TranscriptEditor {
         const endContainer = range.endContainer;
 
         // Find the word spans containing the selection
-        const startSpan = this.findWordSpan(startContainer);
-        const endSpan = this.findWordSpan(endContainer);
+        const startSpan = this.findWordSpan(startContainer, false);
+        const endSpan = this.findWordSpan(endContainer, true);
 
         if (!startSpan || !endSpan) {
             return;
@@ -921,17 +921,49 @@ class TranscriptEditor {
         this.openSpeakerDialog(selectedText);
     }
 
-    findWordSpan(node) {
+    findWordSpan(node, isEnd = false) {
+        // Direct hit on a word span
         if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains("word")) {
             return node;
         }
+        // Text node inside a word span
         if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
             if (node.parentElement.classList.contains("word")) {
                 return node.parentElement;
             }
-            // Look for sibling word spans
-            const siblings = Array.from(node.parentElement.children);
-            return siblings.find(s => s.classList.contains("word"));
+            // Space text node or text node inside paragraph-text div:
+            // walk siblings to find the nearest word span
+            const parent = node.parentElement;
+            const children = Array.from(parent.childNodes);
+            const nodeIndex = children.indexOf(node);
+
+            if (isEnd) {
+                // For end of selection, search backward for the preceding word span
+                for (let i = nodeIndex - 1; i >= 0; i--) {
+                    if (children[i].nodeType === Node.ELEMENT_NODE && children[i].classList.contains("word")) {
+                        return children[i];
+                    }
+                }
+            }
+            // For start of selection (or fallback), search forward for the next word span
+            for (let i = nodeIndex + 1; i < children.length; i++) {
+                if (children[i].nodeType === Node.ELEMENT_NODE && children[i].classList.contains("word")) {
+                    return children[i];
+                }
+            }
+            // Final fallback: search backward
+            for (let i = nodeIndex - 1; i >= 0; i--) {
+                if (children[i].nodeType === Node.ELEMENT_NODE && children[i].classList.contains("word")) {
+                    return children[i];
+                }
+            }
+        }
+        // Node might be a parent element (e.g. paragraph-text div) — find closest word inside
+        if (node.nodeType === Node.ELEMENT_NODE) {
+            const words = node.querySelectorAll(".word");
+            if (words.length > 0) {
+                return isEnd ? words[words.length - 1] : words[0];
+            }
         }
         return null;
     }
