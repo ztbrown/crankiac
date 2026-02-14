@@ -97,6 +97,13 @@ class TranscriptEditor {
         // Only in speaker mode with palette visible
         if (this.mode !== "speaker" || !this.currentEpisodeId) return;
 
+        // Space: toggle audio play/pause
+        if (e.key === " " && this.audioAvailable) {
+            e.preventDefault();
+            this.togglePlayPause();
+            return;
+        }
+
         // Escape: toggle paint mode (disarm, or re-arm last speaker)
         if (e.key === "Escape") {
             if (this.armedSpeaker) {
