@@ -56,10 +56,14 @@ class TranscriptEditor {
         this.seekBar = document.getElementById("seek-bar");
         this.audioTime = document.getElementById("audio-time");
         this.audioDuration = document.getElementById("audio-duration");
+        this.speedBtn = document.getElementById("speed-btn");
+        this.playbackSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+        this.currentSpeedIndex = 2; // 1x
     }
 
     attachAudioListeners() {
         this.playPauseBtn.addEventListener("click", () => this.togglePlayPause());
+        this.speedBtn.addEventListener("click", () => this.cyclePlaybackSpeed(1));
         this.seekBar.addEventListener("input", () => {
             const time = (this.seekBar.value / 100) * this.audioElement.duration;
             this.audioElement.currentTime = time;
@@ -101,6 +105,18 @@ class TranscriptEditor {
         if (e.key === " " && this.audioAvailable) {
             e.preventDefault();
             this.togglePlayPause();
+            return;
+        }
+
+        // [ / ]: slow down / speed up audio
+        if (e.key === "[" && this.audioAvailable) {
+            e.preventDefault();
+            this.cyclePlaybackSpeed(-1);
+            return;
+        }
+        if (e.key === "]" && this.audioAvailable) {
+            e.preventDefault();
+            this.cyclePlaybackSpeed(1);
             return;
         }
 
@@ -211,6 +227,16 @@ class TranscriptEditor {
             this.audioElement.pause();
             this.playPauseBtn.innerHTML = "&#9654;";
         }
+    }
+
+    cyclePlaybackSpeed(direction) {
+        this.currentSpeedIndex = Math.max(0, Math.min(
+            this.playbackSpeeds.length - 1,
+            this.currentSpeedIndex + direction
+        ));
+        const speed = this.playbackSpeeds[this.currentSpeedIndex];
+        this.audioElement.playbackRate = speed;
+        this.speedBtn.textContent = speed === 1 ? "1x" : speed + "x";
     }
 
     handleTimeUpdate() {

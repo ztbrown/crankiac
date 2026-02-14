@@ -564,6 +564,26 @@ body {
     border: none;
 }
 
+.speed-btn {
+    background: none;
+    border: 1px solid #555;
+    color: #ccc;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    min-width: 40px;
+    text-align: center;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.speed-btn:hover {
+    color: white;
+    border-color: #0066cc;
+}
+
 body.has-audio-player .toast-container {
     bottom: 72px;
 }
