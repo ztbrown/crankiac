@@ -108,6 +108,18 @@ class TranscriptEditor {
             return;
         }
 
+        // Arrow keys: skip back/forward 5s (shift for 15s)
+        if (e.key === "ArrowLeft" && this.audioAvailable) {
+            e.preventDefault();
+            this.audioElement.currentTime = Math.max(0, this.audioElement.currentTime - (e.shiftKey ? 15 : 5));
+            return;
+        }
+        if (e.key === "ArrowRight" && this.audioAvailable) {
+            e.preventDefault();
+            this.audioElement.currentTime = Math.min(this.audioElement.duration, this.audioElement.currentTime + (e.shiftKey ? 15 : 5));
+            return;
+        }
+
         // [ / ]: slow down / speed up audio
         if (e.key === "[" && this.audioAvailable) {
             e.preventDefault();
