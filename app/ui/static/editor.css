@@ -681,6 +681,48 @@ body.has-audio-player .transcript-container {
     color: white;
 }
 
+.speaker-visibility-toggle {
+    display: inline-block;
+    margin-right: 4px;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.speaker-visibility-toggle:hover {
+    opacity: 1;
+}
+
+.hidden-speakers-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 16px;
+    padding-left: 16px;
+    border-left: 1px solid #ddd;
+}
+
+.hidden-speakers-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #888;
+    flex-shrink: 0;
+}
+
+.hidden-speakers-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.hidden-speaker-btn {
+    opacity: 0.5;
+}
+
+.hidden-speaker-btn:hover {
+    opacity: 1;
+}
+
 /* Paint mode */
 .transcript-container.paint-mode {
     cursor: crosshair;

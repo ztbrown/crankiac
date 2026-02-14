@@ -15,6 +15,7 @@ class TranscriptEditor {
         // Speaker paint state
         this.armedSpeaker = null;
         this.episodeSpeakers = [];
+        this.hiddenSpeakers = new Set(); // Track hidden speakers for current episode
 
         this.initializeElements();
         this.initAudioElements();
@@ -44,6 +45,8 @@ class TranscriptEditor {
         this.modeEditBtn = document.getElementById("mode-edit");
         this.speakerPalette = document.getElementById("speaker-palette");
         this.speakerPaletteButtons = document.getElementById("speaker-palette-buttons");
+        this.hiddenSpeakersContainer = document.getElementById("hidden-speakers-container");
+        this.hiddenSpeakersButtons = document.getElementById("hidden-speakers-buttons");
     }
 
     initAudioElements() {
@@ -255,22 +258,122 @@ class TranscriptEditor {
         }
     }
 
+    // --- Speaker visibility management (localStorage) ---
+
+    getHiddenSpeakersKey(episodeId) {
+        return `crankiac_hidden_speakers_${episodeId}`;
+    }
+
+    loadHiddenSpeakers(episodeId) {
+        try {
+            const key = this.getHiddenSpeakersKey(episodeId);
+            const stored = localStorage.getItem(key);
+            if (stored) {
+                this.hiddenSpeakers = new Set(JSON.parse(stored));
+            } else {
+                this.hiddenSpeakers = new Set();
+            }
+        } catch {
+            this.hiddenSpeakers = new Set();
+        }
+    }
+
+    saveHiddenSpeakers(episodeId) {
+        try {
+            const key = this.getHiddenSpeakersKey(episodeId);
+            localStorage.setItem(key, JSON.stringify([...this.hiddenSpeakers]));
+        } catch (e) {
+            console.error("Failed to save hidden speakers:", e);
+        }
+    }
+
+    toggleSpeakerVisibility(speakerName) {
+        if (this.hiddenSpeakers.has(speakerName)) {
+            this.hiddenSpeakers.delete(speakerName);
+        } else {
+            // If hiding the armed speaker, disarm it first
+            if (this.armedSpeaker && this.armedSpeaker.name === speakerName) {
+                this.armedSpeaker = null;
+                this.transcriptContainer.classList.remove("paint-mode");
+            }
+            this.hiddenSpeakers.add(speakerName);
+        }
+        this.saveHiddenSpeakers(this.currentEpisodeId);
+        this.renderSpeakerPalette();
+    }
+
     renderSpeakerPalette() {
         this.speakerPaletteButtons.innerHTML = "";
-        this.episodeSpeakers.forEach((speaker, i) => {
+        this.hiddenSpeakersButtons.innerHTML = "";
+
+        // Filter out hidden speakers
+        const visibleSpeakers = this.episodeSpeakers.filter(
+            speaker => !this.hiddenSpeakers.has(speaker.name)
+        );
+        const hiddenSpeakersList = this.episodeSpeakers.filter(
+            speaker => this.hiddenSpeakers.has(speaker.name)
+        );
+
+        // Render visible speakers
+        visibleSpeakers.forEach((speaker, i) => {
             const btn = document.createElement("button");
             btn.className = "speaker-palette-btn";
             btn.dataset.speakerName = speaker.name;
+
+            // Key badge (1-9)
             if (i < 9) {
                 const badge = document.createElement("span");
                 badge.className = "palette-key-badge";
                 badge.textContent = i + 1;
                 btn.appendChild(badge);
             }
+
+            // Visibility toggle icon
+            const toggleIcon = document.createElement("span");
+            toggleIcon.className = "speaker-visibility-toggle";
+            toggleIcon.textContent = "👁";
+            toggleIcon.title = "Hide speaker from palette";
+            toggleIcon.addEventListener("click", (e) => {
+                e.stopPropagation(); // Don't trigger arm
+                this.toggleSpeakerVisibility(speaker.name);
+            });
+            btn.appendChild(toggleIcon);
+
+            // Speaker name
             btn.appendChild(document.createTextNode(speaker.name));
+
+            // Arm/disarm handler
             btn.addEventListener("click", () => this.toggleArmedSpeaker(speaker));
+
             this.speakerPaletteButtons.appendChild(btn);
         });
+
+        // Render hidden speakers
+        if (hiddenSpeakersList.length > 0) {
+            this.hiddenSpeakersContainer.style.display = "flex";
+            hiddenSpeakersList.forEach(speaker => {
+                const btn = document.createElement("button");
+                btn.className = "speaker-palette-btn hidden-speaker-btn";
+                btn.dataset.speakerName = speaker.name;
+
+                // Restore icon
+                const restoreIcon = document.createElement("span");
+                restoreIcon.className = "speaker-visibility-toggle";
+                restoreIcon.textContent = "👁‍🗨";
+                restoreIcon.title = "Show speaker in palette";
+                btn.appendChild(restoreIcon);
+
+                // Speaker name
+                btn.appendChild(document.createTextNode(speaker.name));
+
+                // Click to unhide
+                btn.addEventListener("click", () => this.toggleSpeakerVisibility(speaker.name));
+
+                this.hiddenSpeakersButtons.appendChild(btn);
+            });
+        } else {
+            this.hiddenSpeakersContainer.style.display = "none";
+        }
     }
 
     toggleArmedSpeaker(speaker) {
@@ -478,6 +581,9 @@ class TranscriptEditor {
             promises.push(this.checkAudioAvailability(this.currentPatreonId));
         }
         await Promise.all(promises);
+
+        // Load hidden speakers from localStorage for this episode
+        this.loadHiddenSpeakers(episodeId);
 
         // Show/hide audio player based on availability
         if (this.audioAvailable && this.currentPatreonId) {
