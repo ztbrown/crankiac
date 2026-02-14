@@ -110,10 +110,13 @@ class TranscriptEditor {
             return;
         }
 
-        // Number keys 1-9: arm speaker by palette position
+        // Number keys 1-9: arm speaker by visible palette position
         const num = parseInt(e.key);
         if (num >= 1 && num <= 9 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const speaker = this.episodeSpeakers[num - 1];
+            const visibleSpeakers = this.episodeSpeakers.filter(
+                s => !this.hiddenSpeakers.has(s.name)
+            );
+            const speaker = visibleSpeakers[num - 1];
             if (speaker) {
                 e.preventDefault();
                 this.toggleArmedSpeaker(speaker);
