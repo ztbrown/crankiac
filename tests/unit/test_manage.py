@@ -80,6 +80,7 @@ class TestProcessCommandIntegration:
                     identify_speakers=False,
                     match_threshold=0.70,
                     force=False,
+                    expected_speakers=None,
                 )
 
                 manage.process(args)
@@ -131,6 +132,7 @@ class TestProcessCommandIntegration:
                     identify_speakers=False,
                     match_threshold=0.70,
                     force=False,
+                    expected_speakers=None,
                 )
 
                 manage.process(args)
@@ -182,6 +184,7 @@ class TestProcessCommandIntegration:
                     identify_speakers=False,
                     match_threshold=0.70,
                     force=False,
+                    expected_speakers=None,
                 )
 
                 manage.process(args)
