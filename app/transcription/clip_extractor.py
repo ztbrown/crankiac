@@ -3,8 +3,8 @@
 Uses transcript data with speaker labels to identify clean speech segments,
 then extracts those segments from the audio file for use in speaker enrollment.
 """
-import os
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional, Tuple
 from decimal import Decimal
@@ -47,9 +47,33 @@ class ClipExtractor:
             min_duration: Minimum clip duration in seconds.
             max_duration: Maximum clip duration in seconds.
         """
+        if min_duration >= max_duration:
+            raise ValueError(f"min_duration ({min_duration}) must be less than max_duration ({max_duration})")
+        if min_duration < 0:
+            raise ValueError(f"min_duration must be non-negative, got {min_duration}")
+
         self.output_dir = Path(output_dir)
         self.min_duration = min_duration
         self.max_duration = max_duration
+
+    @staticmethod
+    def _sanitize_speaker_name(name: str) -> str:
+        """Sanitize speaker name for use in file paths.
+
+        Args:
+            name: Speaker name from database.
+
+        Returns:
+            Sanitized name safe for use in file paths.
+        """
+        # Replace problematic characters with underscores
+        sanitized = re.sub(r'[<>:"/\\|?*]', '_', name)
+        # Remove leading/trailing whitespace and dots (problematic on Windows)
+        sanitized = sanitized.strip(' .')
+        # Ensure not empty
+        if not sanitized:
+            sanitized = "unknown_speaker"
+        return sanitized
 
     def _get_speaker_segments_from_db(
         self,
@@ -260,7 +284,9 @@ class ClipExtractor:
             segments_sorted = sorted(segments, key=lambda s: s.duration, reverse=True)
             segments_to_extract = segments_sorted[:max_clips_per_speaker]
 
-            speaker_dir = self.output_dir / speaker
+            # Sanitize speaker name for directory creation
+            safe_speaker_name = self._sanitize_speaker_name(speaker)
+            speaker_dir = self.output_dir / safe_speaker_name
             speaker_dir.mkdir(parents=True, exist_ok=True)
 
             extracted_clips[speaker] = []
