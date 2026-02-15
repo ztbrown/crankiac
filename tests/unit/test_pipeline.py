@@ -70,6 +70,7 @@ def test_process_episode_success(pipeline):
     episode = make_episode()
     transcript = make_transcript_result()
 
+    pipeline.patreon.get_audio_url.return_value = episode.audio_url
     pipeline.downloader.download.return_value = DownloadResult(
         success=True, file_path="/tmp/test.mp3", file_size=1000
     )
@@ -105,6 +106,7 @@ def test_process_episode_skips_already_processed(pipeline):
 @pytest.mark.unit
 def test_process_episode_skips_no_audio_url(pipeline):
     episode = make_episode(audio_url=None)
+    pipeline.patreon.get_audio_url.return_value = None
     result = pipeline.process_episode(episode)
     assert result is False
     pipeline.downloader.download.assert_not_called()
