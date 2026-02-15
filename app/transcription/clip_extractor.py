@@ -13,8 +13,8 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_DIR = "data/reference_audio"
-DEFAULT_MIN_DURATION = 3.0  # seconds
-DEFAULT_MAX_DURATION = 10.0  # seconds
+DEFAULT_MIN_DURATION = 10.0  # seconds
+DEFAULT_MAX_DURATION = 20.0  # seconds
 DEFAULT_MAX_CLIPS_PER_SPEAKER = 10
 
 

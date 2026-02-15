@@ -718,6 +718,57 @@ def extract_clips(args):
                         print(f"    - {path}")
         return
 
+    # Handle --episodes flag: extract clips from specific episodes by number
+    if args.episodes:
+        episode_numbers = [int(n.strip()) for n in args.episodes.split(",")]
+        episodes = repo.get_by_episode_numbers(episode_numbers)
+
+        if not episodes:
+            print(f"No episodes found matching: {args.episodes}")
+            sys.exit(1)
+
+        print(f"Extracting clips from {len(episodes)} episodes: {args.episodes}")
+
+        session_id = os.environ.get("PATREON_SESSION_ID")
+        if not session_id:
+            print("Error: PATREON_SESSION_ID environment variable not set")
+            sys.exit(1)
+
+        downloader = AudioDownloader(session_id)
+
+        total_clips = 0
+        processed = 0
+        skipped = 0
+
+        for episode in episodes:
+            audio_path = str(downloader.get_file_path(episode.patreon_id))
+
+            if not os.path.exists(audio_path):
+                print(f"  [SKIP] {episode.title[:50]}... (audio file not found)")
+                skipped += 1
+                continue
+
+            print(f"  Processing: {episode.title[:50]}...")
+
+            clips = extractor.extract_clips(
+                episode_id=episode.id,
+                audio_path=audio_path,
+                speaker_name=args.speaker,
+                max_clips_per_speaker=args.max_clips
+            )
+
+            if clips:
+                clip_count = sum(len(paths) for paths in clips.values())
+                total_clips += clip_count
+                processed += 1
+
+        print(f"\n=== Extraction Results ===")
+        print(f"  Episodes processed: {processed}")
+        print(f"  Episodes skipped: {skipped}")
+        print(f"  Total clips extracted: {total_clips}")
+        print(f"  Output directory: {args.output_dir}")
+        return
+
     # Handle batch processing (all processed episodes with transcripts)
     from app.db.connection import get_cursor
 
@@ -882,11 +933,12 @@ def main():
     # extract-clips command
     clips_parser = subparsers.add_parser("extract-clips", help="Extract speaker audio clips from transcribed episodes")
     clips_parser.add_argument("--episode", type=int, metavar="ID", help="Extract clips from a specific episode by database ID")
+    clips_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers (e.g., 1003,1004,1005)")
     clips_parser.add_argument("--speaker", help="Extract clips for a specific speaker only")
     clips_parser.add_argument("--limit", type=int, default=10, help="Max episodes to process in batch mode (default: 10)")
     clips_parser.add_argument("--max-clips", type=int, default=10, help="Max clips to extract per speaker per episode (default: 10)")
-    clips_parser.add_argument("--min-duration", type=float, default=3.0, help="Minimum clip duration in seconds (default: 3.0)")
-    clips_parser.add_argument("--max-duration", type=float, default=10.0, help="Maximum clip duration in seconds (default: 10.0)")
+    clips_parser.add_argument("--min-duration", type=float, default=10.0, help="Minimum clip duration in seconds (default: 10.0)")
+    clips_parser.add_argument("--max-duration", type=float, default=20.0, help="Maximum clip duration in seconds (default: 20.0)")
     clips_parser.add_argument("--output-dir", default="data/reference_audio", help="Directory to save clips (default: data/reference_audio)")
     clips_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output including clip paths")
 

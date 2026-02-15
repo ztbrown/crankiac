@@ -14,8 +14,8 @@ def test_clip_extractor_init():
     """ClipExtractor initializes with default parameters."""
     extractor = ClipExtractor()
     assert extractor.output_dir == Path("data/reference_audio")
-    assert extractor.min_duration == 3.0
-    assert extractor.max_duration == 10.0
+    assert extractor.min_duration == 10.0
+    assert extractor.max_duration == 20.0
 
 
 @pytest.mark.unit
