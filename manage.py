@@ -659,6 +659,79 @@ def youtube_align(args):
         print("  (Dry run - no changes made)")
 
 
+def extract_clips_cmd(args):
+    """Extract speaker audio clips from transcribed episodes for enrollment."""
+    from app.transcription.clip_extractor import ClipExtractor
+
+    extractor = ClipExtractor(
+        output_dir=args.output_dir,
+        min_duration=args.min_duration,
+        max_duration=args.max_duration,
+    )
+
+    # Handle single episode
+    if args.episode:
+        try:
+            stats = extractor.extract_clips_for_episode(
+                episode_id=args.episode,
+                speaker_filter=args.speaker,
+                max_clips_per_speaker=args.max_clips,
+            )
+
+            print(f"\n=== Extraction Results ===")
+            print(f"Episode: {stats['episode_title']}")
+            print(f"Total clips extracted: {stats['total_clips']}")
+            print(f"\nBy speaker:")
+            for speaker, count in stats['speakers'].items():
+                print(f"  {speaker}: {count} clips")
+
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        return
+
+    # Handle multiple episodes
+    if args.episodes:
+        episode_ids = [int(n.strip()) for n in args.episodes.split(",")]
+
+        print(f"Extracting clips from {len(episode_ids)} episodes...")
+
+        total_stats = {"episodes": 0, "total_clips": 0, "speakers": {}}
+
+        for episode_id in episode_ids:
+            try:
+                stats = extractor.extract_clips_for_episode(
+                    episode_id=episode_id,
+                    speaker_filter=args.speaker,
+                    max_clips_per_speaker=args.max_clips,
+                )
+
+                total_stats["episodes"] += 1
+                total_stats["total_clips"] += stats["total_clips"]
+
+                for speaker, count in stats["speakers"].items():
+                    if speaker not in total_stats["speakers"]:
+                        total_stats["speakers"][speaker] = 0
+                    total_stats["speakers"][speaker] += count
+
+                print(f"  [{episode_id}] {stats['episode_title']}: {stats['total_clips']} clips")
+
+            except Exception as e:
+                print(f"  [{episode_id}] ERROR: {e}")
+
+        print(f"\n=== Total Results ===")
+        print(f"Episodes processed: {total_stats['episodes']}/{len(episode_ids)}")
+        print(f"Total clips extracted: {total_stats['total_clips']}")
+        print(f"\nBy speaker:")
+        for speaker, count in total_stats["speakers"].items():
+            print(f"  {speaker}: {count} clips")
+
+        return
+
+    print("Error: Must specify --episode or --episodes")
+    sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Crankiac management CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -753,6 +826,16 @@ def main():
     enroll_parser.add_argument("--audio-dir", default="data/reference_audio", help="Root directory with speaker subdirectories (default: data/reference_audio)")
     enroll_parser.add_argument("--output-dir", default="data/speaker_embeddings", help="Directory to save embeddings (default: data/speaker_embeddings)")
 
+    # extract-clips command
+    extract_parser = subparsers.add_parser("extract-clips", help="Extract speaker audio clips from transcribed episodes")
+    extract_parser.add_argument("--episode", type=int, metavar="ID", help="Extract clips from a specific episode by database ID")
+    extract_parser.add_argument("--episodes", type=str, metavar="IDS", help="Comma-separated episode IDs to process (e.g., 123,124,125)")
+    extract_parser.add_argument("--speaker", metavar="LABEL", help="Only extract clips for this speaker (e.g., SPEAKER_0)")
+    extract_parser.add_argument("--max-clips", type=int, metavar="N", help="Maximum clips per speaker (default: unlimited)")
+    extract_parser.add_argument("--output-dir", default="data/reference_audio", help="Output directory for clips (default: data/reference_audio)")
+    extract_parser.add_argument("--min-duration", type=float, default=2.0, help="Minimum clip duration in seconds (default: 2.0)")
+    extract_parser.add_argument("--max-duration", type=float, default=10.0, help="Maximum clip duration in seconds (default: 10.0)")
+
     args = parser.parse_args()
 
     if args.command == "migrate":
@@ -775,6 +858,8 @@ def main():
         cleanup_episodes(args)
     elif args.command == "enroll-speaker":
         enroll_speaker_cmd(args)
+    elif args.command == "extract-clips":
+        extract_clips_cmd(args)
     else:
         parser.print_help()
         sys.exit(1)
