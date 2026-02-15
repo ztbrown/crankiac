@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Crankiac management CLI."""
 import argparse
+import os
 import sys
 
 def migrate():
@@ -659,6 +660,182 @@ def youtube_align(args):
         print("  (Dry run - no changes made)")
 
 
+def extract_clips(args):
+    """Extract speaker audio clips from transcribed episodes for enrollment."""
+    from app.db.repository import EpisodeRepository
+    from app.transcription.clip_extractor import ClipExtractor
+    from app.patreon.downloader import AudioDownloader
+
+    repo = EpisodeRepository()
+    extractor = ClipExtractor(
+        output_dir=args.output_dir,
+        min_duration=args.min_duration,
+        max_duration=args.max_duration,
+    )
+
+    # Handle single episode by ID
+    if args.episode:
+        episode = repo.get_by_id(args.episode)
+        if not episode:
+            print(f"Episode with ID {args.episode} not found")
+            sys.exit(1)
+
+        # Determine audio path
+        if not episode.audio_url:
+            print(f"Episode {episode.id} has no audio_url")
+            sys.exit(1)
+
+        # Check if audio file exists locally
+        session_id = os.environ.get("PATREON_SESSION_ID")
+        if not session_id:
+            print("Error: PATREON_SESSION_ID environment variable not set")
+            sys.exit(1)
+
+        downloader = AudioDownloader(session_id)
+        audio_path = str(downloader.get_file_path(episode.patreon_id))
+
+        if not os.path.exists(audio_path):
+            print(f"Audio file not found: {audio_path}")
+            print("Run 'python manage.py process --episode {args.episode}' first to download audio")
+            sys.exit(1)
+
+        print(f"Extracting clips from: {episode.title}")
+        clips = extractor.extract_clips(
+            episode_id=episode.id,
+            audio_path=audio_path,
+            speaker_name=args.speaker,
+            max_clips_per_speaker=args.max_clips
+        )
+
+        if not clips:
+            print("No clips extracted")
+        else:
+            print(f"\n✓ Extracted clips:")
+            for speaker, paths in clips.items():
+                print(f"  {speaker}: {len(paths)} clips")
+                if args.verbose:
+                    for path in paths:
+                        print(f"    - {path}")
+        return
+
+    # Handle --episodes flag: extract clips from specific episodes by number
+    if args.episodes:
+        episode_numbers = [int(n.strip()) for n in args.episodes.split(",")]
+        episodes = repo.get_by_episode_numbers(episode_numbers)
+
+        if not episodes:
+            print(f"No episodes found matching: {args.episodes}")
+            sys.exit(1)
+
+        print(f"Extracting clips from {len(episodes)} episodes: {args.episodes}")
+
+        session_id = os.environ.get("PATREON_SESSION_ID")
+        if not session_id:
+            print("Error: PATREON_SESSION_ID environment variable not set")
+            sys.exit(1)
+
+        downloader = AudioDownloader(session_id)
+
+        total_clips = 0
+        processed = 0
+        skipped = 0
+
+        for episode in episodes:
+            audio_path = str(downloader.get_file_path(episode.patreon_id))
+
+            if not os.path.exists(audio_path):
+                print(f"  [SKIP] {episode.title[:50]}... (audio file not found)")
+                skipped += 1
+                continue
+
+            print(f"  Processing: {episode.title[:50]}...")
+
+            clips = extractor.extract_clips(
+                episode_id=episode.id,
+                audio_path=audio_path,
+                speaker_name=args.speaker,
+                max_clips_per_speaker=args.max_clips
+            )
+
+            if clips:
+                clip_count = sum(len(paths) for paths in clips.values())
+                total_clips += clip_count
+                processed += 1
+
+        print(f"\n=== Extraction Results ===")
+        print(f"  Episodes processed: {processed}")
+        print(f"  Episodes skipped: {skipped}")
+        print(f"  Total clips extracted: {total_clips}")
+        print(f"  Output directory: {args.output_dir}")
+        return
+
+    # Handle batch processing (all processed episodes with transcripts)
+    from app.db.connection import get_cursor
+
+    with get_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT e.id, e.title, e.patreon_id
+            FROM episodes e
+            JOIN transcript_segments ts ON e.id = ts.episode_id
+            WHERE ts.speaker IS NOT NULL
+            ORDER BY e.published_at DESC
+            LIMIT %s
+            """,
+            (args.limit,)
+        )
+        episodes = cursor.fetchall()
+
+    if not episodes:
+        print("No episodes found with speaker-labeled transcripts")
+        return
+
+    print(f"Found {len(episodes)} episodes with speaker labels")
+
+    session_id = os.environ.get("PATREON_SESSION_ID")
+    if not session_id:
+        print("Error: PATREON_SESSION_ID environment variable not set")
+        sys.exit(1)
+
+    downloader = AudioDownloader(session_id)
+
+    total_clips = 0
+    processed = 0
+    skipped = 0
+
+    for ep in episodes:
+        episode_id = ep["id"]
+        title = ep["title"]
+        patreon_id = ep["patreon_id"]
+
+        audio_path = str(downloader.get_file_path(patreon_id))
+
+        if not os.path.exists(audio_path):
+            print(f"  [SKIP] {title[:50]}... (audio file not found)")
+            skipped += 1
+            continue
+
+        print(f"  Processing: {title[:50]}...")
+
+        clips = extractor.extract_clips(
+            episode_id=episode_id,
+            audio_path=audio_path,
+            speaker_name=args.speaker,
+            max_clips_per_speaker=args.max_clips
+        )
+
+        if clips:
+            clip_count = sum(len(paths) for paths in clips.values())
+            total_clips += clip_count
+            processed += 1
+
+    print(f"\n=== Extraction Results ===")
+    print(f"  Episodes processed: {processed}")
+    print(f"  Episodes skipped: {skipped}")
+    print(f"  Total clips extracted: {total_clips}")
+    print(f"  Output directory: {args.output_dir}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Crankiac management CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -753,6 +930,18 @@ def main():
     enroll_parser.add_argument("--audio-dir", default="data/reference_audio", help="Root directory with speaker subdirectories (default: data/reference_audio)")
     enroll_parser.add_argument("--output-dir", default="data/speaker_embeddings", help="Directory to save embeddings (default: data/speaker_embeddings)")
 
+    # extract-clips command
+    clips_parser = subparsers.add_parser("extract-clips", help="Extract speaker audio clips from transcribed episodes")
+    clips_parser.add_argument("--episode", type=int, metavar="ID", help="Extract clips from a specific episode by database ID")
+    clips_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers (e.g., 1003,1004,1005)")
+    clips_parser.add_argument("--speaker", help="Extract clips for a specific speaker only")
+    clips_parser.add_argument("--limit", type=int, default=10, help="Max episodes to process in batch mode (default: 10)")
+    clips_parser.add_argument("--max-clips", type=int, default=10, help="Max clips to extract per speaker per episode (default: 10)")
+    clips_parser.add_argument("--min-duration", type=float, default=10.0, help="Minimum clip duration in seconds (default: 10.0)")
+    clips_parser.add_argument("--max-duration", type=float, default=20.0, help="Maximum clip duration in seconds (default: 20.0)")
+    clips_parser.add_argument("--output-dir", default="data/reference_audio", help="Directory to save clips (default: data/reference_audio)")
+    clips_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output including clip paths")
+
     args = parser.parse_args()
 
     if args.command == "migrate":
@@ -775,6 +964,8 @@ def main():
         cleanup_episodes(args)
     elif args.command == "enroll-speaker":
         enroll_speaker_cmd(args)
+    elif args.command == "extract-clips":
+        extract_clips(args)
     else:
         parser.print_help()
         sys.exit(1)
