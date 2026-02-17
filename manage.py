@@ -308,7 +308,13 @@ def youtube_sync(args):
 
     repo = EpisodeRepository()
 
-    if args.all:
+    if hasattr(args, 'episodes') and args.episodes:
+        episode_numbers = [int(n.strip()) for n in args.episodes.split(",")]
+        episodes = repo.get_by_episode_numbers(episode_numbers)
+        if not episodes:
+            print(f"No episodes found matching: {args.episodes}")
+            sys.exit(1)
+    elif args.all:
         episodes = repo.get_all()
     else:
         episodes = repo.get_without_youtube()
@@ -893,6 +899,7 @@ def main():
 
     # youtube-sync command
     yt_parser = subparsers.add_parser("youtube-sync", help="Sync YouTube URLs for free episodes")
+    yt_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to sync (e.g., 1007,1008)")
     yt_parser.add_argument("--all", action="store_true", help="Re-match all episodes (not just those without YouTube URLs)")
     yt_parser.add_argument("--dry-run", action="store_true", help="Show matches without updating database")
     yt_parser.add_argument("--tolerance", type=int, default=7, help="Date tolerance in days for matching (default: 7)")
