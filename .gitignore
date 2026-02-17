@@ -40,3 +40,5 @@ data/reference_audio/
 .beads/
 .logs/
 state.json
+
+./downloads
