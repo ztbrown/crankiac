@@ -592,20 +592,36 @@ def youtube_align(args):
     from app.db.connection import get_cursor
     from app.youtube.alignment import align_episode, store_anchor_points
 
-    # Get episodes with youtube_url and transcripts
-    with get_cursor(commit=False) as cursor:
-        cursor.execute(
-            """
-            SELECT e.id, e.title, e.youtube_url, e.published_at
-            FROM episodes e
-            WHERE e.youtube_url IS NOT NULL
-            AND EXISTS (SELECT 1 FROM transcript_segments ts WHERE ts.episode_id = e.id)
-            ORDER BY e.published_at DESC
-            LIMIT %s
-            """,
-            (args.limit,)
-        )
-        episodes = cursor.fetchall()
+    # Get episodes to align
+    if hasattr(args, 'episodes') and args.episodes:
+        from app.db.repository import EpisodeRepository
+        repo = EpisodeRepository()
+        episode_numbers = [int(n.strip()) for n in args.episodes.split(",")]
+        ep_objects = repo.get_by_episode_numbers(episode_numbers)
+        if not ep_objects:
+            print(f"No episodes found matching: {args.episodes}")
+            return
+        # Convert to dicts matching the query format below
+        episodes = []
+        for ep in ep_objects:
+            if not ep.youtube_url:
+                print(f"  [SKIP] {ep.title[:50]}... (no youtube_url)")
+                continue
+            episodes.append({"id": ep.id, "title": ep.title, "youtube_url": ep.youtube_url, "published_at": ep.published_at})
+    else:
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                """
+                SELECT e.id, e.title, e.youtube_url, e.published_at
+                FROM episodes e
+                WHERE e.youtube_url IS NOT NULL
+                AND EXISTS (SELECT 1 FROM transcript_segments ts WHERE ts.episode_id = e.id)
+                ORDER BY e.published_at DESC
+                LIMIT %s
+                """,
+                (args.limit,)
+            )
+            episodes = cursor.fetchall()
 
     print(f"Found {len(episodes)} episodes with YouTube URLs and transcripts")
 
@@ -920,6 +936,7 @@ def main():
 
     # youtube-align command
     align_parser = subparsers.add_parser("youtube-align", help="Align Patreon transcripts with YouTube captions")
+    align_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to align (e.g., 1007,1008)")
     align_parser.add_argument("--limit", type=int, default=50, help="Max episodes to align (default: 50)")
     align_parser.add_argument("--dry-run", action="store_true", help="Show alignment results without storing")
     align_parser.add_argument("--force", action="store_true", help="Re-align episodes that already have anchors")
