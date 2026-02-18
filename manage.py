@@ -78,6 +78,20 @@ def process(args):
         repo = EpisodeRepository()
         episodes = repo.get_by_episode_numbers(episode_numbers)
 
+        # If any requested episodes are missing, sync from Patreon and retry
+        if len(episodes) < len(episode_numbers):
+            found_numbers = set()
+            for ep in episodes:
+                import re
+                m = re.match(r'^(\d+)\s*-', ep.title)
+                if m:
+                    found_numbers.add(int(m.group(1)))
+            missing = [n for n in episode_numbers if n not in found_numbers]
+            if missing:
+                print(f"Episodes {missing} not found locally, syncing from Patreon...")
+                pipeline.sync_episodes(args.max_sync)
+                episodes = repo.get_by_episode_numbers(episode_numbers)
+
         if not episodes:
             print(f"No episodes found matching: {args.episodes}")
             sys.exit(1)
