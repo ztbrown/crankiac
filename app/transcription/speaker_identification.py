@@ -348,5 +348,5 @@ class SpeakerIdentifier:
                 original_label = seg.speaker
                 seg.speaker = label_map[original_label]
                 if score_map and original_label in score_map:
-                    seg.confidence = score_map[original_label]
+                    seg.speaker_confidence = score_map[original_label]
         return speaker_segments
