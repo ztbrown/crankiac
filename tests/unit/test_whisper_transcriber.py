@@ -48,7 +48,7 @@ def test_transcript_result_dataclass():
 def test_transcriber_init_default_model():
     """Test transcriber initializes with default model."""
     transcriber = WhisperTranscriber()
-    assert transcriber.model_name == "base"
+    assert transcriber.model_name == "large-v3"
     assert transcriber._model is None
 
 

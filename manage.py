@@ -894,7 +894,7 @@ def main():
     process_parser.add_argument("--all-shows", action="store_true", help="Include all show types (override default numbered-only filter)")
     process_parser.add_argument("--include-shows", metavar="SHOWS", help="Comma-separated shows to include (e.g., 'players club,movie mindset')")
     # Processing options
-    process_parser.add_argument("--model", default="base", help="Whisper model (tiny/base/small/medium/large)")
+    process_parser.add_argument("--model", default="large-v3", help="Whisper model (tiny/base/small/medium/large/large-v3/turbo)")
     process_parser.add_argument("--no-cleanup", action="store_true", help="Keep audio files after transcription")
     # Diarization options
     process_parser.add_argument("--diarize", action="store_true", help="Enable speaker diarization")

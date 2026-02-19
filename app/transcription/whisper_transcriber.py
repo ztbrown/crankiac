@@ -21,13 +21,15 @@ class TranscriptResult:
 class WhisperTranscriber:
     """Transcribes audio files using OpenAI Whisper with word-level timestamps."""
 
-    def __init__(self, model_name: str = "base", initial_prompt: str = None):
+    def __init__(self, model_name: str = "large-v3", initial_prompt: str = None):
         """
         Initialize the transcriber.
 
         Args:
-            model_name: Whisper model size. Options: tiny, base, small, medium, large.
-                       Larger models are more accurate but slower.
+            model_name: Whisper model size. Options: tiny, base, small, medium, large,
+                       large-v3, turbo. Larger models are more accurate but slower.
+                       large-v3 offers best accuracy; turbo offers large-quality at
+                       faster inference speed.
             initial_prompt: Optional text to provide context for transcription.
                            Useful for improving accuracy of proper nouns and vocabulary.
         """
@@ -121,12 +123,12 @@ def get_transcriber(
     Factory function to get a transcriber instance.
 
     Args:
-        model_name: Whisper model name. Defaults to WHISPER_MODEL env var or "base".
+        model_name: Whisper model name. Defaults to WHISPER_MODEL env var or "large-v3".
         initial_prompt: Optional text to provide context for transcription.
                        Useful for improving accuracy of proper nouns and vocabulary.
 
     Returns:
         Configured WhisperTranscriber instance.
     """
-    model = model_name or os.environ.get("WHISPER_MODEL", "base")
+    model = model_name or os.environ.get("WHISPER_MODEL", "large-v3")
     return WhisperTranscriber(model_name=model, initial_prompt=initial_prompt)
