@@ -30,6 +30,7 @@ def process(args):
         enable_speaker_id=args.identify_speakers,
         match_threshold=args.match_threshold,
         expected_speakers=expected_speakers,
+        enable_vad=args.vad,
     )
 
     # Handle single episode processing by ID
@@ -907,6 +908,8 @@ def main():
     process_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to process (e.g., 1003,1006)")
     # Vocabulary hints
     process_parser.add_argument("--vocab", metavar="PATH", help="Path to vocabulary file (names/terms, one per line)")
+    # VAD pre-filtering
+    process_parser.add_argument("--vad", action="store_true", help="Enable Silero VAD pre-filtering to strip non-speech before transcription")
     # Reprocessing
     process_parser.add_argument("--force", action="store_true", help="Force reprocessing of already-processed episodes")
 

@@ -34,6 +34,7 @@ class EpisodePipeline:
         match_threshold: float = 0.70,
         embeddings_dir: str = "data/speaker_embeddings",
         expected_speakers: Optional[list[str]] = None,
+        enable_vad: bool = False,
     ):
         """
         Initialize the pipeline.
@@ -50,6 +51,7 @@ class EpisodePipeline:
             enable_speaker_id: Whether to identify speakers via voice embeddings.
             match_threshold: Cosine similarity threshold for speaker matching.
             embeddings_dir: Directory containing reference speaker embeddings.
+            enable_vad: Whether to run Silero VAD pre-filtering before transcription.
         """
         self.session_id = session_id or os.environ.get("PATREON_SESSION_ID")
         if not self.session_id:
@@ -69,7 +71,7 @@ class EpisodePipeline:
         initial_prompt = None
         if self.vocabulary_hints:
             initial_prompt = "Names mentioned: " + ", ".join(self.vocabulary_hints) + "."
-        self.transcriber = get_transcriber(whisper_model, initial_prompt=initial_prompt)
+        self.transcriber = get_transcriber(whisper_model, initial_prompt=initial_prompt, vad_filter=enable_vad)
 
         # Initialize diarizer if enabled
         self.diarizer = None

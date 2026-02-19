@@ -1,4 +1,5 @@
 import os
+import tempfile
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
@@ -21,7 +22,12 @@ class TranscriptResult:
 class WhisperTranscriber:
     """Transcribes audio files using OpenAI Whisper with word-level timestamps."""
 
-    def __init__(self, model_name: str = "large-v3", initial_prompt: str = None):
+    def __init__(
+        self,
+        model_name: str = "large-v3",
+        initial_prompt: str = None,
+        vad_filter: bool = False,
+    ):
         """
         Initialize the transcriber.
 
@@ -32,9 +38,13 @@ class WhisperTranscriber:
                        faster inference speed.
             initial_prompt: Optional text to provide context for transcription.
                            Useful for improving accuracy of proper nouns and vocabulary.
+            vad_filter: If True, run Silero VAD before transcription to strip
+                        non-speech audio. Timestamps are remapped back to the
+                        original audio timeline after transcription.
         """
         self.model_name = model_name
         self.initial_prompt = initial_prompt
+        self.vad_filter = vad_filter
         self._model = None
 
     @property
@@ -50,6 +60,9 @@ class WhisperTranscriber:
         """
         Transcribe an audio file with word-level timestamps.
 
+        When vad_filter=True, runs Silero VAD first to strip non-speech audio,
+        then remaps Whisper's timestamps back to the original audio timeline.
+
         Args:
             audio_path: Path to the audio file.
 
@@ -59,34 +72,66 @@ class WhisperTranscriber:
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-        # Transcribe with word timestamps
-        result = self.model.transcribe(
-            audio_path,
-            word_timestamps=True,
-            language="en",
-            condition_on_previous_text=False,
-            initial_prompt=self.initial_prompt,
-            verbose=False
-        )
+        speech_segments = None
+        transcribe_path = audio_path
+        filtered_path = None
+
+        if self.vad_filter:
+            from app.transcription.vad import VoiceActivityDetector
+            import logging
+            _logger = logging.getLogger(__name__)
+            _logger.info("Running VAD pre-filter...")
+            vad = VoiceActivityDetector()
+            filtered_path, speech_segments = vad.filter_audio(audio_path)
+            if filtered_path != audio_path:
+                transcribe_path = filtered_path
+                _logger.info(f"VAD filtered: {len(speech_segments)} speech segments retained")
+
+        try:
+            # Transcribe with word timestamps
+            result = self.model.transcribe(
+                transcribe_path,
+                word_timestamps=True,
+                language="en",
+                condition_on_previous_text=False,
+                initial_prompt=self.initial_prompt,
+                verbose=False
+            )
+        finally:
+            # Clean up the temporary filtered file
+            if filtered_path and filtered_path != audio_path:
+                try:
+                    os.unlink(filtered_path)
+                except OSError:
+                    pass
 
         segments = []
-        segment_index = 0
 
         for segment in result.get("segments", []):
             for word_info in segment.get("words", []):
                 word = word_info.get("word", "").strip()
                 if word:
+                    raw_start = word_info["start"]
+                    raw_end = word_info["end"]
+
+                    if speech_segments:
+                        from app.transcription.vad import remap_timestamps
+                        raw_start = remap_timestamps(raw_start, speech_segments)
+                        raw_end = remap_timestamps(raw_end, speech_segments)
+
                     segments.append(WordSegment(
                         word=word,
-                        start_time=Decimal(str(round(word_info["start"], 3))),
-                        end_time=Decimal(str(round(word_info["end"], 3)))
+                        start_time=Decimal(str(round(raw_start, 3))),
+                        end_time=Decimal(str(round(raw_end, 3)))
                     ))
-                    segment_index += 1
 
         # Get duration from the last segment
         duration = 0.0
         if result.get("segments"):
             duration = result["segments"][-1].get("end", 0.0)
+            if speech_segments:
+                from app.transcription.vad import remap_timestamps
+                duration = remap_timestamps(duration, speech_segments)
 
         return TranscriptResult(
             segments=segments,
@@ -117,7 +162,8 @@ class WhisperTranscriber:
 
 def get_transcriber(
     model_name: Optional[str] = None,
-    initial_prompt: Optional[str] = None
+    initial_prompt: Optional[str] = None,
+    vad_filter: bool = False,
 ) -> WhisperTranscriber:
     """
     Factory function to get a transcriber instance.
@@ -126,9 +172,10 @@ def get_transcriber(
         model_name: Whisper model name. Defaults to WHISPER_MODEL env var or "large-v3".
         initial_prompt: Optional text to provide context for transcription.
                        Useful for improving accuracy of proper nouns and vocabulary.
+        vad_filter: If True, enable Silero VAD pre-filtering before transcription.
 
     Returns:
         Configured WhisperTranscriber instance.
     """
     model = model_name or os.environ.get("WHISPER_MODEL", "large-v3")
-    return WhisperTranscriber(model_name=model, initial_prompt=initial_prompt)
+    return WhisperTranscriber(model_name=model, initial_prompt=initial_prompt, vad_filter=vad_filter)
