@@ -64,9 +64,6 @@ class VoiceActivityDetector:
         Returns:
             List of SpeechSegment with start/end times in the original audio.
         """
-        import torch
-        import torchaudio
-
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
