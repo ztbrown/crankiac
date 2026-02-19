@@ -98,7 +98,7 @@ class TestEndpointsReturn200:
     @pytest.mark.integration
     def test_transcript_speakers_returns_200(self, client, mock_cursor):
         """Speakers endpoint must return 200."""
-        with patch("app.api.transcript_routes.get_cursor", return_value=mock_cursor):
+        with patch("app.transcription.storage.get_cursor", return_value=mock_cursor):
             response = client.get("/api/transcripts/speakers")
             assert response.status_code == 200, f"Expected 200, got {response.status_code}"
 

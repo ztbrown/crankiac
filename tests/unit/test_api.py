@@ -89,11 +89,11 @@ def test_context_endpoint_missing_segment_index(client):
 def test_speakers_endpoint(client):
     """Test speakers endpoint returns list of speakers."""
     mock_rows = [
-        {"speaker": "SPEAKER_01", "word_count": 100},
-        {"speaker": "SPEAKER_02", "word_count": 50},
+        {"id": 1, "name": "SPEAKER_01", "created_at": None},
+        {"id": 2, "name": "SPEAKER_02", "created_at": None},
     ]
 
-    with patch("app.api.transcript_routes.get_cursor") as mock_cursor:
+    with patch("app.transcription.storage.get_cursor") as mock_cursor:
         mock_ctx = MagicMock()
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
