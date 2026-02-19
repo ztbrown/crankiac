@@ -1,4 +1,5 @@
 """Speaker diarization module for identifying speakers in audio."""
+import bisect
 import os
 import logging
 from dataclasses import dataclass
@@ -169,40 +170,87 @@ def assign_speakers_to_words(
     if not speaker_segments:
         return word_segments
 
-    # Build a sorted list of speaker segments for binary search
+    # Build sorted list and parallel start_times list for binary search
     sorted_speakers = sorted(speaker_segments, key=lambda s: s.start_time)
+    start_times = [s.start_time for s in sorted_speakers]
 
     for word in word_segments:
-        # Find the speaker segment that contains this word's midpoint
+        word_start = word.start_time
+        word_end = word.end_time
+
+        # Use bisect to find candidate segments: only those with start_time < word_end
+        # can possibly overlap with the word.
+        right_idx = bisect.bisect_left(start_times, word_end)
+
+        best_speaker = None
+        best_confidence = None
+        max_overlap = Decimal(0)
+        for seg in sorted_speakers[:right_idx]:
+            if seg.end_time <= word_start:
+                continue  # segment ends before word starts — no overlap
+            overlap = min(word_end, seg.end_time) - max(word_start, seg.start_time)
+            if overlap > max_overlap:
+                max_overlap = overlap
+                best_speaker = seg.speaker
+                best_confidence = seg.confidence
+
+        word.speaker = best_speaker
+        if hasattr(word, 'speaker_confidence'):
+            word.speaker_confidence = best_confidence
+
+    # Bidirectional gap-filling: for unassigned words, pick the temporally
+    # closer of the nearest preceding and following assigned words.
+    n = len(word_segments)
+
+    # Forward pass: for each position record the last assigned word before it
+    prev_info = [None] * n  # (speaker, confidence, time_center)
+    last_assigned = None
+    for i, word in enumerate(word_segments):
+        if word.speaker is not None:
+            last_assigned = (
+                word.speaker,
+                getattr(word, 'speaker_confidence', None),
+                (word.start_time + word.end_time) / 2,
+            )
+        prev_info[i] = last_assigned
+
+    # Backward pass: for each position record the next assigned word after it
+    next_info = [None] * n
+    next_assigned = None
+    for i in range(n - 1, -1, -1):
+        word = word_segments[i]
+        if word.speaker is not None:
+            next_assigned = (
+                word.speaker,
+                getattr(word, 'speaker_confidence', None),
+                (word.start_time + word.end_time) / 2,
+            )
+        next_info[i] = next_assigned
+
+    for i, word in enumerate(word_segments):
+        if word.speaker is not None:
+            continue
+
+        prev = prev_info[i]
+        nxt = next_info[i]
+
+        if prev is None and nxt is None:
+            continue
+
         word_mid = (word.start_time + word.end_time) / 2
 
-        speaker = None
-        confidence = None
-        for seg in sorted_speakers:
-            if seg.start_time <= word_mid <= seg.end_time:
-                speaker = seg.speaker
-                confidence = seg.confidence
-                break
-            elif seg.start_time > word_mid:
-                # Past the word's time, stop searching
-                break
+        if prev is None:
+            chosen = nxt
+        elif nxt is None:
+            chosen = prev
+        else:
+            prev_dist = abs(word_mid - prev[2])
+            next_dist = abs(word_mid - nxt[2])
+            chosen = prev if prev_dist <= next_dist else nxt
 
-        # Set the speaker and confidence (may remain None if no match)
-        word.speaker = speaker
+        word.speaker = chosen[0]
         if hasattr(word, 'speaker_confidence'):
-            word.speaker_confidence = confidence
-
-    # Fill gaps: words with no speaker inherit from the nearest preceding word
-    last_speaker = None
-    last_confidence = None
-    for word in word_segments:
-        if word.speaker is not None:
-            last_speaker = word.speaker
-            last_confidence = getattr(word, 'speaker_confidence', None)
-        elif last_speaker is not None:
-            word.speaker = last_speaker
-            if hasattr(word, 'speaker_confidence'):
-                word.speaker_confidence = last_confidence
+            word.speaker_confidence = chosen[1]
 
     return word_segments
 
