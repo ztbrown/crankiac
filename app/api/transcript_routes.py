@@ -107,21 +107,11 @@ def search_transcripts():
 
 
 def search_single_word(
-    word: str,
-    limit: int,
-    offset: int,
-    episode_filter: Optional[EpisodeFilter] = None,
-    speaker: Optional[str] = None,
+    word: str, limit: int, offset: int, episode_filter: Optional[EpisodeFilter] = None
 ) -> tuple[list[dict], int]:
     """Search for a single word using trigram index."""
     episode_filter = episode_filter or EpisodeFilter()
     filter_clause, filter_params = episode_filter.build_clause()
-
-    speaker_clause = ""
-    speaker_params: list = []
-    if speaker:
-        speaker_clause = " AND COALESCE(s.name, ts.speaker) ILIKE %s"
-        speaker_params = [f"%{speaker}%"]
 
     with get_cursor(commit=False) as cursor:
         # Get total count
@@ -129,10 +119,9 @@ def search_single_word(
             SELECT COUNT(*) as total
             FROM transcript_segments ts
             JOIN episodes e ON ts.episode_id = e.id
-            LEFT JOIN speakers s ON ts.speaker_id = s.id
-            WHERE ts.word ILIKE %s{filter_clause}{speaker_clause}
+            WHERE ts.word ILIKE %s{filter_clause}
         """
-        cursor.execute(count_query, [f"%{word}%"] + filter_params + speaker_params)
+        cursor.execute(count_query, [f"%{word}%"] + filter_params)
         total = cursor.fetchone()["total"]
 
         # Get results with context
@@ -158,14 +147,11 @@ def search_single_word(
             FROM transcript_segments ts
             JOIN episodes e ON ts.episode_id = e.id
             LEFT JOIN speakers s ON ts.speaker_id = s.id
-            WHERE ts.word ILIKE %s{filter_clause}{speaker_clause}
+            WHERE ts.word ILIKE %s{filter_clause}
             ORDER BY e.published_at DESC, ts.start_time
             LIMIT %s OFFSET %s
         """
-        cursor.execute(
-            results_query,
-            [f"%{word}%"] + filter_params + speaker_params + [limit, offset],
-        )
+        cursor.execute(results_query, [f"%{word}%"] + filter_params + [limit, offset])
 
         # Import alignment function for YouTube time conversion
         from ..youtube.alignment import get_youtube_time
@@ -325,131 +311,6 @@ def search_phrase(
             })
 
         return results, total
-
-
-def _get_distinct_speakers() -> list[str]:
-    """Fetch distinct speaker names from the speakers table."""
-    with get_cursor(commit=False) as cursor:
-        cursor.execute("SELECT name FROM speakers WHERE name IS NOT NULL ORDER BY name")
-        rows = cursor.fetchall()
-    names = [row["name"] for row in rows if row["name"]]
-    return names or list(KNOWN_SPEAKERS)
-
-
-def _expand_query(query: str, speakers: list[str]):
-    """Expand query via QueryExpander; returns ExpandedQuery (fallback on error)."""
-    from app.search.query_expander import QueryExpander
-    return QueryExpander(known_speakers=speakers).expand(query)
-
-
-@transcript_api.route("/smart-search")
-def smart_search_transcripts():
-    """
-    Search transcripts using LLM-powered query expansion.
-
-    Expands a natural language query into keywords and an optional speaker
-    filter via Ollama, runs per-keyword word searches, then merges and
-    ranks results by keyword hit count with recency as a tiebreaker.
-
-    Query params:
-        q: Natural language search query
-        limit: Max results (default 100, max 500)
-        offset: Pagination offset (default 0)
-        date_from, date_to, episode_number, content_type: same as /search
-
-    Returns:
-        Same JSON shape as /search plus an ``expanded_query`` field containing
-        the LLM decomposition (speaker, keywords, topic_summary, original).
-        Falls back to literal single-word search if expansion fails.
-    """
-    query = request.args.get("q", "").strip()
-    try:
-        limit = min(int(request.args.get("limit", 100)), 500)
-        offset = int(request.args.get("offset", 0))
-    except ValueError:
-        return jsonify({"error": "limit and offset must be integers"}), 400
-
-    date_from = request.args.get("date_from", "").strip() or None
-    date_to = request.args.get("date_to", "").strip() or None
-    episode_number_str = request.args.get("episode_number", "").strip()
-    episode_number = int(episode_number_str) if episode_number_str else None
-    content_type = request.args.get("content_type", "all").strip().lower()
-
-    episode_filter = (
-        EpisodeFilter()
-        .with_date_from(date_from)
-        .with_date_to(date_to)
-        .with_episode_number(episode_number)
-        .with_content_type(content_type)
-    )
-
-    if not query:
-        return jsonify({
-            "results": [], "query": "", "total": 0,
-            "limit": limit, "offset": offset,
-            "filters": episode_filter.to_dict(),
-            "expanded_query": None,
-        })
-
-    # Fetch known speakers for LLM context
-    speakers = _get_distinct_speakers()
-
-    # Expand query (graceful fallback to literal keywords on any error)
-    try:
-        expanded = _expand_query(query, speakers)
-    except Exception:
-        from app.search.query_expander import ExpandedQuery
-        expanded = ExpandedQuery(
-            speaker=None,
-            keywords=query.split(),
-            topic_summary=query,
-            original=query,
-        )
-
-    keywords = expanded.keywords or query.split()
-    speaker_filter = expanded.speaker or None
-
-    # Search each keyword and accumulate results
-    # Use a large internal cap so we capture enough results across keywords.
-    INTERNAL_LIMIT = 500
-    # key: (episode_id, segment_index) -> (result_dict, hit_count)
-    results_map: dict[tuple, tuple[dict, int]] = {}
-
-    for keyword in keywords:
-        kw_results, _ = search_single_word(
-            keyword, INTERNAL_LIMIT, 0, episode_filter, speaker=speaker_filter
-        )
-        for result in kw_results:
-            key = (result["episode_id"], result["segment_index"])
-            if key in results_map:
-                existing, hits = results_map[key]
-                results_map[key] = (existing, hits + 1)
-            else:
-                results_map[key] = (result, 1)
-
-    # Rank: descending hit count, then descending recency (ISO string sorts correctly)
-    ranked = list(results_map.values())
-    ranked.sort(key=lambda x: x[0]["published_at"] or "", reverse=True)  # recency first
-    ranked.sort(key=lambda x: x[1], reverse=True)  # then hits (stable)
-
-    all_results = [{**r, "keyword_hits": hits} for r, hits in ranked]
-    total = len(all_results)
-    paginated = all_results[offset: offset + limit]
-
-    return jsonify({
-        "results": paginated,
-        "query": query,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "filters": episode_filter.to_dict(),
-        "expanded_query": {
-            "speaker": expanded.speaker,
-            "keywords": expanded.keywords,
-            "topic_summary": expanded.topic_summary,
-            "original": expanded.original,
-        },
-    })
 
 
 @transcript_api.route("/context")

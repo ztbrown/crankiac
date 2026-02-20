@@ -873,81 +873,6 @@ def extract_clips(args):
     print(f"  Output directory: {args.output_dir}")
 
 
-def search(args):
-    """Search transcripts from the command line using smart query expansion."""
-    from app.search.query_expander import QueryExpander
-    from app.api.transcript_routes import search_single_word, search_phrase, KNOWN_SPEAKERS
-    from app.filters import EpisodeFilter
-
-    query = args.query
-
-    if args.no_expand:
-        # Bypass LLM - use original query directly
-        keywords = query.split()
-        speaker_filter = None
-        print(f"Query: {query}")
-        print(f"[--no-expand] Bypassing LLM, searching directly for: {query!r}")
-    else:
-        expander = QueryExpander(known_speakers=KNOWN_SPEAKERS)
-        expanded = expander.expand(query)
-
-        if args.verbose and expander.last_prompt is not None:
-            print("=== LLM Prompt ===")
-            print(expander.last_prompt)
-            print()
-            print("=== LLM Response ===")
-            print(expander.last_raw_response or "(no response captured)")
-            print()
-
-        print(f"Query: {query}")
-        print(f"Expansion:")
-        print(f"  Speaker: {expanded.speaker or '(none)'}")
-        print(f"  Keywords: {', '.join(expanded.keywords) or '(none)'}")
-        print(f"  Topic: {expanded.topic_summary}")
-        print()
-
-        keywords = expanded.keywords
-        speaker_filter = expanded.speaker
-
-    # Build episode filter with speaker constraint if identified
-    episode_filter = EpisodeFilter()
-
-    # Build search term: use keywords joined or fall back to original query
-    search_term = " ".join(keywords) if keywords else query
-
-    # Run the search
-    words = search_term.split()
-    if len(words) == 1:
-        results, total = search_single_word(search_term, limit=10, offset=0, episode_filter=episode_filter)
-    else:
-        results, total = search_phrase(words, limit=10, offset=0, episode_filter=episode_filter)
-
-    # Post-filter by speaker if expansion identified one
-    if speaker_filter:
-        filtered = [r for r in results if r.get("speaker") and speaker_filter.lower() in r["speaker"].lower()]
-        if filtered:
-            results = filtered
-
-    print(f"Results: {min(len(results), 10)} of {total} total matches")
-    print()
-
-    for i, result in enumerate(results[:10], 1):
-        speaker = result.get("speaker") or "Unknown"
-        start = result.get("start_time", 0)
-        episode = result.get("episode_title", "")
-        context = result.get("context", result.get("word", ""))
-
-        # Format timestamp as MM:SS
-        minutes = int(start) // 60
-        seconds = int(start) % 60
-        timestamp = f"{minutes}:{seconds:02d}"
-
-        print(f"{i:2d}. [{speaker}] {timestamp} — {episode[:50]}")
-        if context:
-            print(f"     {context[:120]}")
-        print()
-
-
 def main():
     parser = argparse.ArgumentParser(description="Crankiac management CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -1046,12 +971,6 @@ def main():
     enroll_parser.add_argument("--audio-dir", default="data/reference_audio", help="Root directory with speaker subdirectories (default: data/reference_audio)")
     enroll_parser.add_argument("--output-dir", default="data/speaker_embeddings", help="Directory to save embeddings (default: data/speaker_embeddings)")
 
-    # search command
-    search_parser = subparsers.add_parser("search", help="Search transcripts using smart query expansion")
-    search_parser.add_argument("query", help="Natural language search query (e.g., 'felix talking about fighter jets')")
-    search_parser.add_argument("--verbose", "-v", action="store_true", help="Show full LLM prompt and response")
-    search_parser.add_argument("--no-expand", action="store_true", help="Bypass LLM query expansion and search directly")
-
     # extract-clips command
     clips_parser = subparsers.add_parser("extract-clips", help="Extract speaker audio clips from transcribed episodes")
     clips_parser.add_argument("--episode", type=int, metavar="ID", help="Extract clips from a specific episode by database ID")
@@ -1088,8 +1007,6 @@ def main():
         enroll_speaker_cmd(args)
     elif args.command == "extract-clips":
         extract_clips(args)
-    elif args.command == "search":
-        search(args)
     else:
         parser.print_help()
         sys.exit(1)
