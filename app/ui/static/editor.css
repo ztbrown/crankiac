@@ -614,6 +614,22 @@ body.has-audio-player .transcript-container {
     color: #e53e3e;
 }
 
+/* Overlap badge — indicates crosstalk detected for this paragraph */
+.overlap-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #fff;
+    background-color: #dd6b20;
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    vertical-align: middle;
+    cursor: default;
+}
+
 /* Timestamp spans next to speaker labels */
 .paragraph-timestamp {
     font-size: 12px;

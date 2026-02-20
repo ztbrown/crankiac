@@ -28,4 +28,5 @@ class TranscriptSegment:
     segment_index: int
     speaker: Optional[str] = None
     speaker_confidence: Optional[Decimal] = None
+    is_overlap: bool = False
     created_at: Optional[datetime] = None
