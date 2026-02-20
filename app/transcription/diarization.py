@@ -185,18 +185,37 @@ def assign_speakers_to_words(
         best_speaker = None
         best_confidence = None
         max_overlap = Decimal(0)
+        second_max_overlap = Decimal(0)
         for seg in sorted_speakers[:right_idx]:
             if seg.end_time <= word_start:
                 continue  # segment ends before word starts — no overlap
             overlap = min(word_end, seg.end_time) - max(word_start, seg.start_time)
             if overlap > max_overlap:
+                second_max_overlap = max_overlap
                 max_overlap = overlap
                 best_speaker = seg.speaker
                 best_confidence = seg.confidence
+            elif overlap > second_max_overlap:
+                second_max_overlap = overlap
 
         word.speaker = best_speaker
         if hasattr(word, 'speaker_confidence'):
             word.speaker_confidence = best_confidence
+
+        # Overlap detection: flag crosstalk when second-best speaker has significant overlap.
+        # Conditions: second-best >= 30% of word duration AND >= 50% of best overlap.
+        if max_overlap > Decimal(0):
+            word_duration = word_end - word_start
+            if word_duration > Decimal(0):
+                is_overlap = (
+                    second_max_overlap >= word_duration * Decimal("0.3")
+                    and second_max_overlap >= max_overlap * Decimal("0.5")
+                )
+                word.is_overlap = is_overlap
+            else:
+                word.is_overlap = False
+        else:
+            word.is_overlap = False
 
     # Bidirectional gap-filling: for unassigned words, pick the temporally
     # closer of the nearest preceding and following assigned words.

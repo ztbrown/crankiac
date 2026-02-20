@@ -696,6 +696,15 @@ class TranscriptEditor {
                 speakerLabel.textContent = `[${speakerName}]`;
             }
 
+            // Add overlap badge if paragraph has crosstalk
+            if (paragraph.has_overlap) {
+                const overlapBadge = document.createElement("span");
+                overlapBadge.className = "overlap-badge";
+                overlapBadge.textContent = "overlap";
+                overlapBadge.title = "Crosstalk detected — multiple speakers may be talking";
+                speakerLabel.appendChild(overlapBadge);
+            }
+
             // Add delete button to speaker label
             const deleteBtn = document.createElement("button");
             deleteBtn.className = "paragraph-delete-btn";

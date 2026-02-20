@@ -104,19 +104,20 @@ class TranscriptStorage:
                 values = [
                     (s.episode_id, s.word, str(s.start_time), str(s.end_time),
                      s.segment_index, s.speaker, speaker_id_cache.get(s.speaker),
-                     float(s.speaker_confidence) if s.speaker_confidence is not None else None)
+                     float(s.speaker_confidence) if s.speaker_confidence is not None else None,
+                     getattr(s, 'is_overlap', False))
                     for s in batch
                 ]
 
                 # Use execute_values for efficient batch insert
                 args_str = ",".join(
-                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s, %s)", v).decode("utf-8")
+                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s, %s, %s)", v).decode("utf-8")
                     for v in values
                 )
 
                 cursor.execute(f"""
                     INSERT INTO transcript_segments
-                    (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id, speaker_confidence)
+                    (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id, speaker_confidence, is_overlap)
                     VALUES {args_str}
                 """)
 
@@ -218,9 +219,10 @@ class TranscriptStorage:
                         confidence = getattr(seg, 'speaker_confidence', None)
                         if confidence is not None:
                             confidence = float(confidence)
+                        is_overlap = getattr(seg, 'is_overlap', False)
                         cursor.execute(
-                            "UPDATE transcript_segments SET speaker = %s, speaker_id = %s, speaker_confidence = %s WHERE id = %s",
-                            (seg.speaker, speaker_id, confidence, seg.id)
+                            "UPDATE transcript_segments SET speaker = %s, speaker_id = %s, speaker_confidence = %s, is_overlap = %s WHERE id = %s",
+                            (seg.speaker, speaker_id, confidence, is_overlap, seg.id)
                         )
                         updated += cursor.rowcount
 
@@ -528,6 +530,7 @@ class TranscriptStorage:
                     ts.segment_index,
                     ts.speaker,
                     ts.speaker_confidence,
+                    ts.is_overlap,
                     s.name as speaker_name
                 FROM transcript_segments ts
                 LEFT JOIN speakers s ON ts.speaker_id = s.id
@@ -552,6 +555,8 @@ class TranscriptStorage:
                 confidence = float(row["speaker_confidence"]) if row["speaker_confidence"] is not None else None
 
                 # Start new paragraph if speaker changed or this is the first segment
+                is_overlap = bool(row["is_overlap"])
+
                 if current_paragraph is None or current_paragraph["speaker"] != speaker:
                     if current_paragraph:
                         paragraphs.append(current_paragraph)
@@ -563,12 +568,16 @@ class TranscriptStorage:
                         "end_time": float(row["end_time"]),
                         "segment_ids": [row["id"]],
                         "speaker_confidence": confidence,
+                        "has_overlap": is_overlap,
                     }
                 else:
                     # Add to current paragraph
                     current_paragraph["text"] += " " + row["word"]
                     current_paragraph["end_time"] = float(row["end_time"])
                     current_paragraph["segment_ids"].append(row["id"])
+                    # Any word with overlap makes the paragraph flagged
+                    if is_overlap:
+                        current_paragraph["has_overlap"] = True
                     # Use minimum confidence in the paragraph
                     if confidence is not None:
                         if current_paragraph["speaker_confidence"] is None:
