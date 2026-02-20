@@ -10,6 +10,7 @@ from app.patreon.downloader import AudioDownloader
 from app.transcription.whisper_transcriber import get_transcriber
 from app.transcription.storage import TranscriptStorage
 from app.transcription.diarization import get_diarizer, assign_speakers_to_words
+from app.transcription.boundary_refinement import refine_speaker_boundaries
 from app.db.repository import EpisodeRepository
 from app.db.models import Episode
 
@@ -219,6 +220,7 @@ class EpisodePipeline:
                     speaker_segments = self.diarizer.diarize(download_result.file_path)
 
                     # Speaker identification (optional) — map labels to real names
+                    label_map, score_map = {}, {}
                     if self.speaker_identifier:
                         logger.info(f"  Running speaker identification...")
                         try:
@@ -237,6 +239,26 @@ class EpisodePipeline:
                     transcript.segments = assign_speakers_to_words(
                         transcript.segments, speaker_segments
                     )
+
+                    # Boundary refinement — runs when speaker ID is active
+                    if self.speaker_identifier and label_map:
+                        logger.info(f"  Refining speaker boundaries...")
+                        try:
+                            audio_input = self.speaker_identifier._load_audio(
+                                download_result.file_path
+                            )
+                            transcript.segments = refine_speaker_boundaries(
+                                transcript.segments,
+                                speaker_segments,
+                                audio_input,
+                                self.speaker_identifier,
+                                label_map,
+                                score_map,
+                            )
+                            logger.info(f"  Boundary refinement complete")
+                        except Exception as e:
+                            logger.warning(f"  Boundary refinement failed (continuing without): {e}")
+
                     speakers_found = len(set(
                         s.speaker for s in transcript.segments if s.speaker
                     ))
@@ -386,6 +408,7 @@ class EpisodePipeline:
             logger.info(f"  Found {len(speaker_segments)} speaker segments")
 
             # Speaker identification (optional) — map labels to real names
+            label_map, score_map = {}, {}
             if self.speaker_identifier:
                 logger.info(f"  Running speaker identification...")
                 try:
@@ -404,6 +427,25 @@ class EpisodePipeline:
             # Assign speakers to words
             from app.transcription.diarization import assign_speakers_to_words
             updated_segments = assign_speakers_to_words(segments, speaker_segments)
+
+            # Boundary refinement — runs when speaker ID is active
+            if self.speaker_identifier and label_map:
+                logger.info(f"  Refining speaker boundaries...")
+                try:
+                    audio_input = self.speaker_identifier._load_audio(
+                        download_result.file_path
+                    )
+                    updated_segments = refine_speaker_boundaries(
+                        updated_segments,
+                        speaker_segments,
+                        audio_input,
+                        self.speaker_identifier,
+                        label_map,
+                        score_map,
+                    )
+                    logger.info(f"  Boundary refinement complete")
+                except Exception as e:
+                    logger.warning(f"  Boundary refinement failed (continuing without): {e}")
 
             speakers_found = len(set(s.speaker for s in updated_segments if s.speaker))
             logger.info(f"  Assigned {speakers_found} unique speakers")
