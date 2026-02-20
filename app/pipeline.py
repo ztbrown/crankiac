@@ -11,6 +11,7 @@ from app.transcription.whisper_transcriber import get_transcriber
 from app.transcription.storage import TranscriptStorage
 from app.transcription.diarization import get_diarizer, assign_speakers_to_words
 from app.transcription.boundary_refinement import refine_speaker_boundaries
+from app.transcription.corrections import load_corrections, apply_corrections
 from app.db.repository import EpisodeRepository
 from app.db.models import Episode
 
@@ -36,6 +37,7 @@ class EpisodePipeline:
         embeddings_dir: str = "data/speaker_embeddings",
         expected_speakers: Optional[list[str]] = None,
         enable_vad: bool = False,
+        corrections_file: Optional[str] = "data/correction_dictionary.json",
     ):
         """
         Initialize the pipeline.
@@ -53,6 +55,7 @@ class EpisodePipeline:
             match_threshold: Cosine similarity threshold for speaker matching.
             embeddings_dir: Directory containing reference speaker embeddings.
             enable_vad: Whether to run Silero VAD pre-filtering before transcription.
+            corrections_file: Path to correction_dictionary.json (None to disable).
         """
         self.session_id = session_id or os.environ.get("PATREON_SESSION_ID")
         if not self.session_id:
@@ -66,6 +69,9 @@ class EpisodePipeline:
         self.downloader = AudioDownloader(self.session_id, download_dir)
         self.storage = TranscriptStorage()
         self.episode_repo = EpisodeRepository()
+        self.corrections = load_corrections(corrections_file)
+        if self.corrections:
+            logger.info(f"Loaded {len(self.corrections)} word corrections")
 
         # Load vocabulary hints from file and build initial_prompt for Whisper
         self.vocabulary_hints = self._load_vocabulary(vocabulary_file)
@@ -265,6 +271,11 @@ class EpisodePipeline:
                     logger.info(f"  Diarization complete: {speakers_found} unique speakers")
                 except Exception as e:
                     logger.warning(f"  Diarization failed (continuing without): {e}")
+
+            # Apply word corrections (after transcription, before storage)
+            if self.corrections:
+                transcript.segments = apply_corrections(transcript.segments, self.corrections)
+                logger.info(f"  Applied {len(self.corrections)} word corrections")
 
             # Store
             logger.info(f"  Storing transcript...")

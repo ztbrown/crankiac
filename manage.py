@@ -573,6 +573,36 @@ def cleanup_episodes(args):
     print("\n✅ Done!")
 
 
+def mine_corrections_cmd(args):
+    """Mine frequent corrections from edit_history and output JSON."""
+    import json
+    from app.transcription.corrections import mine_corrections
+
+    corrections = mine_corrections(min_count=args.min_count)
+
+    if not corrections:
+        print(f"No corrections found with min_count={args.min_count}")
+        return
+
+    output_path = args.output or "data/correction_dictionary.json"
+
+    if args.dry_run:
+        print(f"[DRY RUN] Would write {len(corrections)} corrections to {output_path}:")
+        for old, new in sorted(corrections.items()):
+            print(f"  {old!r} -> {new!r}")
+        return
+
+    import os
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with open(output_path, "w") as f:
+        json.dump(corrections, f, indent=2, sort_keys=True)
+
+    print(f"Wrote {len(corrections)} corrections to {output_path}")
+    for old, new in sorted(corrections.items()):
+        print(f"  {old!r} -> {new!r}")
+
+
 def enroll_speaker_cmd(args):
     """Enroll a speaker from reference audio clips."""
     from app.transcription.enroll import enroll_speaker, enroll_all_speakers
@@ -964,6 +994,12 @@ def main():
     cleanup_parser.add_argument("--keep", required=True, help="Comma-separated episode numbers to keep (e.g., 1003,1004,1005,1006)")
     cleanup_parser.add_argument("--confirm", action="store_true", help="Actually delete (without this, runs in dry-run mode)")
 
+    # mine-corrections command
+    mine_parser = subparsers.add_parser("mine-corrections", help="Mine frequent corrections from edit_history")
+    mine_parser.add_argument("--min-count", type=int, default=3, help="Minimum occurrences required (default: 3)")
+    mine_parser.add_argument("--output", "-o", help="Output JSON file path (default: data/correction_dictionary.json)")
+    mine_parser.add_argument("--dry-run", action="store_true", help="Show corrections without writing file")
+
     # enroll-speaker command
     enroll_parser = subparsers.add_parser("enroll-speaker", help="Enroll speaker(s) from reference audio clips")
     enroll_parser.add_argument("--name", help="Speaker name (must match a subdirectory in reference audio dir)")
@@ -1003,6 +1039,8 @@ def main():
         youtube_align(args)
     elif args.command == "cleanup-episodes":
         cleanup_episodes(args)
+    elif args.command == "mine-corrections":
+        mine_corrections_cmd(args)
     elif args.command == "enroll-speaker":
         enroll_speaker_cmd(args)
     elif args.command == "extract-clips":
