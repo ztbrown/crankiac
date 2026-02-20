@@ -467,6 +467,7 @@ def list_episodes():
                 e.title,
                 e.published_at,
                 e.processed,
+                e.manually_reviewed,
                 COUNT(ts.id) as word_count
             FROM episodes e
             LEFT JOIN transcript_segments ts ON e.id = ts.episode_id
@@ -485,6 +486,7 @@ def list_episodes():
                 "title": row["title"],
                 "published_at": row["published_at"].isoformat() if row["published_at"] else None,
                 "processed": row["processed"],
+                "manually_reviewed": row["manually_reviewed"],
                 "word_count": row["word_count"]
             })
 
@@ -1085,7 +1087,7 @@ def get_episode_paragraphs(episode_id: int):
     # Verify episode exists
     with get_cursor(commit=False) as cursor:
         cursor.execute(
-            "SELECT id, title FROM episodes WHERE id = %s",
+            "SELECT id, title, manually_reviewed FROM episodes WHERE id = %s",
             (episode_id,)
         )
         episode = cursor.fetchone()
@@ -1099,6 +1101,7 @@ def get_episode_paragraphs(episode_id: int):
     return jsonify({
         "episode_id": episode_id,
         "episode_title": episode["title"],
+        "manually_reviewed": episode["manually_reviewed"],
         "paragraphs": paragraphs,
         "total": len(paragraphs)
     })
@@ -1158,4 +1161,44 @@ def assign_speaker():
         "updated": updated,
         "episode_id": episode_id,
         "speaker_id": speaker_id
+    })
+
+
+@transcript_api.route("/episode/<int:episode_id>/manually-reviewed", methods=["PATCH"])
+def set_manually_reviewed(episode_id: int):
+    """
+    Set the manually_reviewed flag for an episode.
+
+    Request body:
+        {
+            "manually_reviewed": true
+        }
+
+    Returns:
+        JSON with episode_id and updated manually_reviewed value.
+    """
+    data = request.get_json()
+    if not data or "manually_reviewed" not in data:
+        return jsonify({"error": "manually_reviewed field required"}), 400
+
+    value = data["manually_reviewed"]
+    if not isinstance(value, bool):
+        return jsonify({"error": "manually_reviewed must be a boolean"}), 400
+
+    with get_cursor() as cursor:
+        cursor.execute(
+            "SELECT id FROM episodes WHERE id = %s",
+            (episode_id,)
+        )
+        if not cursor.fetchone():
+            return jsonify({"error": "Episode not found"}), 404
+
+        cursor.execute(
+            "UPDATE episodes SET manually_reviewed = %s WHERE id = %s",
+            (value, episode_id)
+        )
+
+    return jsonify({
+        "episode_id": episode_id,
+        "manually_reviewed": value
     })

@@ -154,6 +154,21 @@ body {
     color: #888;
 }
 
+.manually-reviewed-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #555;
+    cursor: pointer;
+    user-select: none;
+}
+
+.manually-reviewed-checkbox {
+    cursor: pointer;
+    accent-color: #4caf50;
+}
+
 /* Loading container */
 .loading-container {
     display: flex;

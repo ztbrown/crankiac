@@ -29,6 +29,8 @@ class TranscriptEditor {
         this.episodeSelect = document.getElementById("episode-select");
         this.episodeTitle = document.getElementById("episode-title");
         this.paragraphCount = document.getElementById("paragraph-count");
+        this.manuallyReviewedLabel = document.getElementById("manually-reviewed-label");
+        this.manuallyReviewedCheckbox = document.getElementById("manually-reviewed-checkbox");
         this.transcriptContainer = document.getElementById("transcript-container");
         this.loadingContainer = document.getElementById("loading-container");
         this.errorContainer = document.getElementById("error-container");
@@ -84,6 +86,7 @@ class TranscriptEditor {
         this.speakerInput.addEventListener("keydown", (e) => this.handleSpeakerInputKeydown(e));
         this.modeSpeakerBtn.addEventListener("click", () => this.setMode("speaker"));
         this.modeEditBtn.addEventListener("click", () => this.setMode("edit"));
+        this.manuallyReviewedCheckbox.addEventListener("change", () => this.handleManuallyReviewedChange());
 
         // Handle text selection
         document.addEventListener("mouseup", () => this.handleTextSelection());
@@ -609,6 +612,7 @@ class TranscriptEditor {
             this.transcriptContainer.innerHTML = "";
             this.episodeTitle.textContent = "";
             this.paragraphCount.textContent = "";
+            this.manuallyReviewedLabel.style.display = "none";
             this.hideAudioPlayer();
             this.currentPatreonId = null;
             this.armedSpeaker = null;
@@ -657,6 +661,8 @@ class TranscriptEditor {
             this.paragraphs = data.paragraphs;
             this.episodeTitle.textContent = data.episode_title;
             this.paragraphCount.textContent = `${data.total} paragraphs`;
+            this.manuallyReviewedCheckbox.checked = data.manually_reviewed || false;
+            this.manuallyReviewedLabel.style.display = "";
             this.renderTranscript();
         } catch (error) {
             this.showError("Failed to load transcript: " + error.message);
@@ -1160,6 +1166,29 @@ class TranscriptEditor {
         } catch (error) {
             console.error("Failed to create speaker:", error);
             return null;
+        }
+    }
+
+    async handleManuallyReviewedChange() {
+        if (!this.currentEpisodeId) return;
+        const checked = this.manuallyReviewedCheckbox.checked;
+        try {
+            const response = await fetch(
+                `/api/transcripts/episode/${this.currentEpisodeId}/manually-reviewed`,
+                {
+                    method: "PATCH",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({manually_reviewed: checked})
+                }
+            );
+            if (!response.ok) {
+                // Revert checkbox on failure
+                this.manuallyReviewedCheckbox.checked = !checked;
+                this.showError("Failed to update review status");
+            }
+        } catch (error) {
+            this.manuallyReviewedCheckbox.checked = !checked;
+            this.showError("Failed to update review status: " + error.message);
         }
     }
 }

@@ -1,0 +1,1 @@
+ALTER TABLE episodes ADD COLUMN manually_reviewed BOOLEAN DEFAULT FALSE;
