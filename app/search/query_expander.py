@@ -28,6 +28,8 @@ class QueryExpander:
         self.known_speakers = known_speakers or []
         self.ollama_url = OLLAMA_URL
         self.model = OLLAMA_MODEL
+        self.last_prompt: Optional[str] = None
+        self.last_raw_response: Optional[str] = None
 
     def expand(self, query: str) -> ExpandedQuery:
         """Expand a natural language query into structured filters.
@@ -61,6 +63,8 @@ class QueryExpander:
             f"Return only valid JSON, nothing else."
         )
 
+        self.last_prompt = prompt
+
         response = requests.post(
             f"{self.ollama_url}/api/generate",
             json={"model": self.model, "prompt": prompt, "format": "json", "stream": False},
@@ -70,6 +74,7 @@ class QueryExpander:
 
         data = response.json()
         raw = data.get("response", "")
+        self.last_raw_response = raw
         parsed = json.loads(raw)
 
         speaker = parsed.get("speaker") or None
