@@ -25,8 +25,10 @@ function buildSearchUrl(query) {
     for (const [key, value] of Object.entries(filters)) {
         params.append(key, value);
     }
-    // Add fuzzy parameter based on checkbox state
-    params.append("fuzzy", filterFuzzy.checked ? "true" : "false");
+    if (filterFuzzy.checked) {
+        return `/api/transcripts/smart-search?${params.toString()}`;
+    }
+    params.append("fuzzy", "false");
     return `/api/transcripts/search?${params.toString()}`;
 }
 
@@ -47,7 +49,7 @@ async function performSearch() {
         }
 
         const data = await response.json();
-        displayResults(data.results, data.query, data.filters, data.fuzzy);
+        displayResults(data.results, data.query, data.filters, data.fuzzy, data.expanded_query);
     } catch (error) {
         resultsContainer.innerHTML = `<div class="error">Error: ${error.message}</div>`;
     }
@@ -147,7 +149,20 @@ function getYoutubeEmbedUrl(videoId, startSeconds) {
 }
 
 
-function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true) {
+function buildExpandedQueryBanner(expandedQuery) {
+    if (!expandedQuery) return "";
+    const parts = [];
+    if (expandedQuery.speaker) {
+        parts.push(`Speaker: <strong>${escapeHtml(expandedQuery.speaker)}</strong>`);
+    }
+    if (expandedQuery.keywords && expandedQuery.keywords.length > 0) {
+        parts.push(`Keywords: <strong>${expandedQuery.keywords.map(escapeHtml).join(", ")}</strong>`);
+    }
+    if (!parts.length) return "";
+    return `<div class="expanded-query-banner">Smart search understood: ${parts.join(" · ")}</div>`;
+}
+
+function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true, expandedQuery = null) {
     if (results.length === 0) {
         const filterInfo = Object.keys(activeFilters).length > 0
             ? " with current filters"
@@ -232,7 +247,7 @@ function displayResults(results, query, activeFilters = {}, fuzzyEnabled = true)
         })
         .join("");
 
-    resultsContainer.innerHTML = filterSummary + html;
+    resultsContainer.innerHTML = buildExpandedQueryBanner(expandedQuery) + filterSummary + html;
 
     // Store results for later reference
     resultsContainer.dataset.query = query;
