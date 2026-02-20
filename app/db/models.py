@@ -15,6 +15,7 @@ class Episode:
     youtube_id: Optional[str] = None
     is_free: bool = False
     processed: bool = False
+    manually_reviewed: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

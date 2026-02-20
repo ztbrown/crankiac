@@ -187,3 +187,109 @@ class TestUpdateSpeaker:
         assert response.status_code == 400
         data = response.get_json()
         assert 'error' in data
+
+
+class TestManuallyReviewed:
+    """Tests for PATCH /api/transcripts/episode/<id>/manually-reviewed endpoint."""
+
+    def test_set_manually_reviewed_true(self, client, test_episode):
+        """Test setting manually_reviewed to True."""
+        response = client.patch(
+            f'/api/transcripts/episode/{test_episode}/manually-reviewed',
+            json={'manually_reviewed': True}
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['manually_reviewed'] is True
+        assert data['episode_id'] == test_episode
+
+        # Verify in database
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT manually_reviewed FROM episodes WHERE id = %s",
+                (test_episode,)
+            )
+            assert cursor.fetchone()['manually_reviewed'] is True
+
+    def test_set_manually_reviewed_false(self, client, test_episode):
+        """Test setting manually_reviewed back to False."""
+        # First set to True
+        client.patch(
+            f'/api/transcripts/episode/{test_episode}/manually-reviewed',
+            json={'manually_reviewed': True}
+        )
+        # Now set back to False
+        response = client.patch(
+            f'/api/transcripts/episode/{test_episode}/manually-reviewed',
+            json={'manually_reviewed': False}
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['manually_reviewed'] is False
+
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT manually_reviewed FROM episodes WHERE id = %s",
+                (test_episode,)
+            )
+            assert cursor.fetchone()['manually_reviewed'] is False
+
+    def test_manually_reviewed_not_found(self, client):
+        """Test 404 for non-existent episode."""
+        response = client.patch(
+            '/api/transcripts/episode/99999/manually-reviewed',
+            json={'manually_reviewed': True}
+        )
+
+        assert response.status_code == 404
+        data = response.get_json()
+        assert 'error' in data
+
+    def test_manually_reviewed_missing_body(self, client, test_episode):
+        """Test 400 when request body is missing or malformed."""
+        response = client.patch(
+            f'/api/transcripts/episode/{test_episode}/manually-reviewed',
+            json={}
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert 'error' in data
+
+    def test_manually_reviewed_invalid_value(self, client, test_episode):
+        """Test 400 when manually_reviewed is not a boolean."""
+        response = client.patch(
+            f'/api/transcripts/episode/{test_episode}/manually-reviewed',
+            json={'manually_reviewed': 'yes'}
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert 'error' in data
+
+    def test_list_episodes_includes_manually_reviewed(self, client, test_episode):
+        """Test that list_episodes response includes manually_reviewed field."""
+        response = client.get('/api/transcripts/episodes?limit=200')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert 'episodes' in data
+
+        # Find our test episode
+        episode = next(
+            (e for e in data['episodes'] if e['id'] == test_episode), None
+        )
+        assert episode is not None
+        assert 'manually_reviewed' in episode
+        assert episode['manually_reviewed'] is False
+
+    def test_get_paragraphs_includes_manually_reviewed(self, client, test_episode):
+        """Test that get_episode_paragraphs response includes manually_reviewed field."""
+        response = client.get(f'/api/transcripts/episode/{test_episode}/paragraphs')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert 'manually_reviewed' in data
+        assert data['manually_reviewed'] is False
