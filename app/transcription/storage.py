@@ -316,6 +316,15 @@ class TranscriptStorage:
 
             return segments, total
 
+    def _log_edit(self, cursor, episode_id: int, segment_id: Optional[int],
+                  field: str, old_value: Optional[str], new_value: Optional[str]) -> None:
+        """Insert a row into edit_history within the current transaction."""
+        cursor.execute(
+            """INSERT INTO edit_history (episode_id, segment_id, field, old_value, new_value)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (episode_id, segment_id, field, old_value, new_value)
+        )
+
     def update_word_text(self, segment_id: int, new_word: str) -> bool:
         """
         Update the word text for a specific transcript segment.
@@ -332,10 +341,20 @@ class TranscriptStorage:
 
         with get_cursor() as cursor:
             cursor.execute(
+                "SELECT id, word, episode_id FROM transcript_segments WHERE id = %s",
+                (segment_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            cursor.execute(
                 "UPDATE transcript_segments SET word = %s WHERE id = %s",
                 (new_word.strip(), segment_id)
             )
-            return cursor.rowcount > 0
+            self._log_edit(cursor, episode_id=row["episode_id"], segment_id=segment_id,
+                           field='word', old_value=row["word"], new_value=new_word.strip())
+            return True
 
     def insert_segment_after(self, after_segment_id: int, word: str) -> Optional[int]:
         """
@@ -379,7 +398,11 @@ class TranscriptStorage:
                  new_index, ref["speaker"], ref["speaker_id"])
             )
             row = cursor.fetchone()
-            return row["id"] if row else None
+            new_id = row["id"] if row else None
+            if new_id is not None:
+                self._log_edit(cursor, episode_id=ref["episode_id"], segment_id=new_id,
+                               field='insert', old_value=None, new_value=word.strip())
+            return new_id
 
     def delete_segment(self, segment_id: int) -> bool:
         """
@@ -393,10 +416,20 @@ class TranscriptStorage:
         """
         with get_cursor() as cursor:
             cursor.execute(
+                "SELECT id, word, episode_id FROM transcript_segments WHERE id = %s",
+                (segment_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            cursor.execute(
                 "DELETE FROM transcript_segments WHERE id = %s",
                 (segment_id,)
             )
-            return cursor.rowcount > 0
+            self._log_edit(cursor, episode_id=row["episode_id"], segment_id=segment_id,
+                           field='delete', old_value=row["word"], new_value=None)
+            return True
 
     def get_all_speakers(self, search: Optional[str] = None) -> list[dict]:
         """
@@ -606,6 +639,18 @@ class TranscriptStorage:
                 start_index = rows[0]["segment_index"]
                 end_index = rows[1]["segment_index"]
 
+            # Fetch old speaker_ids before updating (for edit log)
+            cursor.execute(
+                """
+                SELECT id, speaker_id, episode_id
+                FROM transcript_segments
+                WHERE episode_id = %s
+                AND segment_index BETWEEN %s AND %s
+                """,
+                (episode_id, start_index, end_index)
+            )
+            old_segments = cursor.fetchall()
+
             # Update all segments in the range
             cursor.execute(
                 """
@@ -617,4 +662,13 @@ class TranscriptStorage:
                 (speaker_id, episode_id, start_index, end_index)
             )
 
-            return cursor.rowcount
+            updated = cursor.rowcount
+
+            # Log an edit for each changed segment
+            for seg in old_segments:
+                self._log_edit(cursor, episode_id=seg["episode_id"], segment_id=seg["id"],
+                               field='speaker',
+                               old_value=str(seg["speaker_id"]) if seg["speaker_id"] is not None else None,
+                               new_value=str(speaker_id))
+
+            return updated
