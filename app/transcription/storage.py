@@ -128,6 +128,34 @@ class TranscriptStorage:
 
         return total_inserted
 
+    def update_word_confidence_batch(self, episode_id: int, index_to_confidence: dict) -> int:
+        """
+        Update word_confidence for existing transcript segments by segment_index.
+
+        Args:
+            episode_id: Database ID of the episode.
+            index_to_confidence: Dict mapping segment_index -> float confidence value.
+
+        Returns:
+            Number of segments updated.
+        """
+        if not index_to_confidence:
+            return 0
+
+        updated = 0
+        with get_cursor() as cursor:
+            for segment_index, confidence in index_to_confidence.items():
+                if confidence is not None:
+                    cursor.execute(
+                        """UPDATE transcript_segments
+                           SET word_confidence = %s
+                           WHERE episode_id = %s AND segment_index = %s""",
+                        (float(confidence), episode_id, segment_index)
+                    )
+                    updated += cursor.rowcount
+
+        return updated
+
     def delete_episode_transcript(self, episode_id: int) -> int:
         """
         Delete all transcript segments for an episode.

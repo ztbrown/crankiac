@@ -101,6 +101,21 @@ class EpisodeRepository:
             cursor.execute("SELECT * FROM episodes ORDER BY published_at DESC")
             return [Episode(**row) for row in cursor.fetchall()]
 
+    def get_with_missing_word_confidence(self, limit: Optional[int] = None) -> list[Episode]:
+        """Get episodes that have a transcript but at least one segment with NULL word_confidence."""
+        with get_cursor(commit=False) as cursor:
+            query = """
+                SELECT DISTINCT e.*
+                FROM episodes e
+                INNER JOIN transcript_segments ts ON ts.episode_id = e.id
+                WHERE ts.word_confidence IS NULL
+                ORDER BY e.published_at DESC
+            """
+            if limit:
+                query += f" LIMIT {limit}"
+            cursor.execute(query)
+            return [Episode(**row) for row in cursor.fetchall()]
+
     def get_without_youtube(self) -> list[Episode]:
         """Get episodes that don't have a YouTube URL."""
         with get_cursor(commit=False) as cursor:
