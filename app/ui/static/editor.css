@@ -275,6 +275,27 @@ body {
     display: inline;
 }
 
+/* Word confidence backgrounds */
+.transcript-container[data-mode="speaker"] .paragraph-text .word.medium-word-confidence {
+    background: rgba(255, 200, 0, 0.15);
+}
+
+.transcript-container[data-mode="speaker"] .paragraph-text .word.low-word-confidence {
+    background: rgba(255, 80, 80, 0.2);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: rgba(255, 80, 80, 0.6);
+}
+
+/* Speaker confidence word indicators */
+.transcript-container[data-mode="speaker"] .paragraph-text .word.medium-speaker-confidence {
+    border-bottom: 2px solid orange;
+}
+
+.transcript-container[data-mode="speaker"] .paragraph-text .word.low-speaker-confidence {
+    border-bottom: 2px solid red;
+}
+
 /* Edit mode - entire paragraph editable */
 .transcript-container[data-mode="edit"] .paragraph-text {
     padding: 8px 12px;
