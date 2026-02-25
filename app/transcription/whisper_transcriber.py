@@ -10,6 +10,7 @@ class WordSegment:
     start_time: Decimal
     end_time: Decimal
     speaker: Optional[str] = None
+    word_confidence: Optional[Decimal] = None
 
 @dataclass
 class TranscriptResult:
@@ -118,10 +119,12 @@ class WhisperTranscriber:
                         raw_start = remap_timestamps(raw_start, speech_segments)
                         raw_end = remap_timestamps(raw_end, speech_segments)
 
+                    probability = word_info.get("probability")
                     segments.append(WordSegment(
                         word=word,
                         start_time=Decimal(str(round(raw_start, 3))),
-                        end_time=Decimal(str(round(raw_end, 3)))
+                        end_time=Decimal(str(round(raw_end, 3))),
+                        word_confidence=Decimal(str(round(probability, 3))) if probability is not None else None
                     ))
 
         # Get duration from the last segment
