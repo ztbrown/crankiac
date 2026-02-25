@@ -1164,6 +1164,44 @@ def assign_speaker():
     })
 
 
+@transcript_api.route("/paragraphs/edit", methods=["POST"])
+def edit_paragraph_batch():
+    """
+    Edit a paragraph as a single atomic batch using semantic word-level diff.
+
+    Replaces N individual PATCH/POST/DELETE calls with one transactional request.
+
+    Request body:
+        {
+            "segment_ids": [int, ...],
+            "new_text": "the new paragraph text"
+        }
+
+    Returns:
+        JSON with counts: {"updated": int, "inserted": int, "deleted": int}
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+
+    segment_ids = data.get("segment_ids")
+    new_text = data.get("new_text")
+
+    if segment_ids is None or not isinstance(segment_ids, list):
+        return jsonify({"error": "segment_ids must be a list of integers"}), 400
+
+    if not all(isinstance(sid, int) for sid in segment_ids):
+        return jsonify({"error": "segment_ids must be a list of integers"}), 400
+
+    if new_text is None or not isinstance(new_text, str):
+        return jsonify({"error": "new_text must be a string"}), 400
+
+    from app.transcription.storage import TranscriptStorage
+    storage = TranscriptStorage()
+    counts = storage.edit_paragraph(segment_ids, new_text)
+    return jsonify(counts)
+
+
 @transcript_api.route("/episode/<int:episode_id>/manually-reviewed", methods=["PATCH"])
 def set_manually_reviewed(episode_id: int):
     """

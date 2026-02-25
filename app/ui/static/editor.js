@@ -811,75 +811,18 @@ class TranscriptEditor {
         try {
             const segmentIds = JSON.parse(textDiv.dataset.segmentIds);
 
-            if (!newText) {
-                // Full paragraph deletion: delete all segments
-                for (const segmentId of segmentIds) {
-                    const response = await fetch(`/api/transcripts/segments/${segmentId}`, {
-                        method: "DELETE"
-                    });
-                    if (!response.ok && response.status !== 404) {
-                        throw new Error(`Failed to delete segment ${segmentId}`);
-                    }
-                }
+            const response = await fetch("/api/transcripts/paragraphs/edit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ segment_ids: segmentIds, new_text: newText })
+            });
 
-                textDiv.classList.remove("saving");
-                this.showToast(`Deleted ${segmentIds.length} segments`, "success");
-                await this.loadTranscript(this.currentEpisodeId);
-                return;
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `Server error ${response.status}`);
             }
 
-            // Split new text into words
-            const newWords = newText.split(/\s+/);
-
-            // Update words that still exist
-            const updates = [];
-            for (let i = 0; i < Math.min(newWords.length, segmentIds.length); i++) {
-                const segmentId = segmentIds[i];
-                const newWord = newWords[i];
-
-                const response = await fetch(`/api/transcripts/segments/${segmentId}/word`, {
-                    method: "PATCH",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ word: newWord })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Failed to update word at position ${i}`);
-                }
-                updates.push({ segmentId, word: newWord });
-            }
-
-            // Insert new words added beyond existing segments
-            const inserted = [];
-            let lastSegmentId = segmentIds[segmentIds.length - 1];
-            for (let i = segmentIds.length; i < newWords.length; i++) {
-                const response = await fetch(`/api/transcripts/segments/${lastSegmentId}/insert-after`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word: newWords[i] })
-                });
-                if (!response.ok) {
-                    throw new Error(`Failed to insert word "${newWords[i]}"`);
-                }
-                const result = await response.json();
-                lastSegmentId = result.id;
-                inserted.push(result.id);
-            }
-
-            // Delete excess segments (words removed by user)
-            const deleted = [];
-            for (let i = newWords.length; i < segmentIds.length; i++) {
-                const segmentId = segmentIds[i];
-                const response = await fetch(`/api/transcripts/segments/${segmentId}`, {
-                    method: "DELETE"
-                });
-                if (!response.ok && response.status !== 404) {
-                    throw new Error(`Failed to delete segment ${segmentId}`);
-                }
-                deleted.push(segmentId);
-            }
+            const counts = await response.json();
 
             textDiv.dataset.originalText = newText;
             textDiv.classList.remove("saving");
@@ -887,10 +830,10 @@ class TranscriptEditor {
             setTimeout(() => textDiv.classList.remove("saved"), 2000);
 
             const parts = [];
-            if (updates.length > 0) parts.push(`${updates.length} updated`);
-            if (inserted.length > 0) parts.push(`${inserted.length} added`);
-            if (deleted.length > 0) parts.push(`${deleted.length} deleted`);
-            this.showToast(parts.join(", "), "success");
+            if (counts.updated > 0) parts.push(`${counts.updated} updated`);
+            if (counts.inserted > 0) parts.push(`${counts.inserted} added`);
+            if (counts.deleted > 0) parts.push(`${counts.deleted} deleted`);
+            if (parts.length > 0) this.showToast(parts.join(", "), "success");
 
             // Reload transcript to reflect changes
             await this.loadTranscript(this.currentEpisodeId);
