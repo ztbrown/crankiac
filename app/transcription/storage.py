@@ -1,3 +1,4 @@
+from difflib import SequenceMatcher
 from typing import Optional, TYPE_CHECKING
 from decimal import Decimal
 from app.db.connection import get_cursor
@@ -592,6 +593,174 @@ class TranscriptStorage:
                 paragraphs.append(current_paragraph)
 
             return paragraphs
+
+    def edit_paragraph(self, segment_ids: list[int], new_text: str) -> dict:
+        """
+        Edit a paragraph using word-level semantic diff via SequenceMatcher.
+
+        Computes a diff between the current words (identified by segment_ids) and new_text,
+        then applies the minimal set of replace/insert/delete operations right-to-left
+        to preserve segment_index stability. All operations run in a single transaction.
+
+        Args:
+            segment_ids: Ordered list of segment IDs representing the paragraph.
+            new_text: The new paragraph text (tokenized by whitespace).
+
+        Returns:
+            Dict with counts: {"updated": int, "inserted": int, "deleted": int}
+        """
+        if not segment_ids:
+            return {"updated": 0, "inserted": 0, "deleted": 0}
+
+        new_words = new_text.split()
+        updated = 0
+        inserted = 0
+        deleted = 0
+
+        with get_cursor() as cursor:
+            # Fetch current segments in order
+            placeholders = ",".join(["%s"] * len(segment_ids))
+            cursor.execute(
+                f"""SELECT id, episode_id, word, start_time, end_time, segment_index,
+                           speaker, speaker_id
+                    FROM transcript_segments
+                    WHERE id IN ({placeholders})
+                    ORDER BY segment_index""",
+                segment_ids
+            )
+            rows = cursor.fetchall()
+
+            if not rows:
+                return {"updated": 0, "inserted": 0, "deleted": 0}
+
+            episode_id = rows[0]["episode_id"]
+            old_words = [row["word"] for row in rows]
+
+            # Compute word-level diff
+            matcher = SequenceMatcher(None, old_words, new_words, autojunk=False)
+            opcodes = matcher.get_opcodes()
+
+            # Process right-to-left to preserve segment_index stability
+            for tag, i1, i2, j1, j2 in reversed(opcodes):
+                if tag == "equal":
+                    continue
+
+                elif tag == "replace":
+                    old_slice = rows[i1:i2]
+                    new_slice = new_words[j1:j2]
+                    n_old = len(old_slice)
+                    n_new = len(new_slice)
+                    n_replace = min(n_old, n_new)
+
+                    # Update overlapping portion
+                    for k in range(n_replace):
+                        seg = old_slice[k]
+                        new_word = new_slice[k]
+                        if seg["word"] != new_word:
+                            cursor.execute(
+                                "UPDATE transcript_segments SET word = %s WHERE id = %s",
+                                (new_word, seg["id"])
+                            )
+                            self._log_edit(cursor, episode_id=episode_id,
+                                           segment_id=seg["id"], field="word",
+                                           old_value=seg["word"], new_value=new_word)
+                            updated += 1
+
+                    # Delete extra old words (right-to-left within this slice)
+                    for k in range(n_old - 1, n_replace - 1, -1):
+                        seg = old_slice[k]
+                        cursor.execute(
+                            "DELETE FROM transcript_segments WHERE id = %s",
+                            (seg["id"],)
+                        )
+                        self._log_edit(cursor, episode_id=episode_id,
+                                       segment_id=seg["id"], field="delete",
+                                       old_value=seg["word"], new_value=None)
+                        deleted += 1
+
+                    # Insert extra new words after the last replaced segment
+                    if n_new > n_old:
+                        ref = old_slice[-1]
+                        after_index = ref["segment_index"]
+                        after_timing = (ref["start_time"], ref["end_time"],
+                                        ref["speaker"], ref["speaker_id"])
+                        for k in range(n_replace, n_new):
+                            new_word = new_slice[k]
+                            new_index = after_index + 1
+                            cursor.execute(
+                                """UPDATE transcript_segments
+                                   SET segment_index = segment_index + 1
+                                   WHERE episode_id = %s AND segment_index >= %s""",
+                                (episode_id, new_index)
+                            )
+                            cursor.execute(
+                                """INSERT INTO transcript_segments
+                                   (episode_id, word, start_time, end_time,
+                                    segment_index, speaker, speaker_id)
+                                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                   RETURNING id""",
+                                (episode_id, new_word, after_timing[0], after_timing[1],
+                                 new_index, after_timing[2], after_timing[3])
+                            )
+                            new_row = cursor.fetchone()
+                            if new_row:
+                                self._log_edit(cursor, episode_id=episode_id,
+                                               segment_id=new_row["id"], field="insert",
+                                               old_value=None, new_value=new_word)
+                            after_index = new_index
+                            inserted += 1
+
+                elif tag == "delete":
+                    for seg in reversed(rows[i1:i2]):
+                        cursor.execute(
+                            "DELETE FROM transcript_segments WHERE id = %s",
+                            (seg["id"],)
+                        )
+                        self._log_edit(cursor, episode_id=episode_id,
+                                       segment_id=seg["id"], field="delete",
+                                       old_value=seg["word"], new_value=None)
+                        deleted += 1
+
+                elif tag == "insert":
+                    # Insert new words at position i1 (i1 == i2)
+                    if i1 > 0:
+                        ref = rows[i1 - 1]
+                        after_index = ref["segment_index"]
+                        ref_timing = (ref["start_time"], ref["end_time"],
+                                      ref["speaker"], ref["speaker_id"])
+                    else:
+                        # Insert before the first segment
+                        ref = rows[0]
+                        after_index = ref["segment_index"] - 1
+                        ref_timing = (ref["start_time"], ref["end_time"],
+                                      ref["speaker"], ref["speaker_id"])
+
+                    for word in new_words[j1:j2]:
+                        new_index = after_index + 1
+                        cursor.execute(
+                            """UPDATE transcript_segments
+                               SET segment_index = segment_index + 1
+                               WHERE episode_id = %s AND segment_index >= %s""",
+                            (episode_id, new_index)
+                        )
+                        cursor.execute(
+                            """INSERT INTO transcript_segments
+                               (episode_id, word, start_time, end_time,
+                                segment_index, speaker, speaker_id)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s)
+                               RETURNING id""",
+                            (episode_id, word, ref_timing[0], ref_timing[1],
+                             new_index, ref_timing[2], ref_timing[3])
+                        )
+                        new_row = cursor.fetchone()
+                        if new_row:
+                            self._log_edit(cursor, episode_id=episode_id,
+                                           segment_id=new_row["id"], field="insert",
+                                           old_value=None, new_value=word)
+                        after_index = new_index
+                        inserted += 1
+
+        return {"updated": updated, "inserted": inserted, "deleted": deleted}
 
     def assign_speaker_to_range(
         self,
