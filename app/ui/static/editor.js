@@ -683,13 +683,23 @@ class TranscriptEditor {
             const speakerLabel = document.createElement("div");
             speakerLabel.className = "speaker-label";
             const speakerName = paragraph.speaker || "Unknown Speaker";
-            const confidence = paragraph.speaker_confidence;
-            if (confidence !== null && confidence !== undefined) {
-                const pct = Math.round(confidence * 100);
-                speakerLabel.textContent = `[${speakerName}] ${pct}%`;
-                if (confidence < 0.5) {
+            const speakerConf = paragraph.speaker_confidence;
+            const minWordConf = paragraph.min_word_confidence;
+            if (speakerConf !== null && speakerConf !== undefined) {
+                const spkrPct = Math.round(speakerConf * 100);
+                let labelText = `[${speakerName}] spkr:${spkrPct}%`;
+                if (minWordConf !== null && minWordConf !== undefined) {
+                    const wordPct = Math.round(minWordConf * 100);
+                    labelText += ` word:${wordPct}%`;
+                }
+                speakerLabel.textContent = labelText;
+                // Color-code by the worse of the two scores
+                const worstConf = (minWordConf !== null && minWordConf !== undefined)
+                    ? Math.min(speakerConf, minWordConf)
+                    : speakerConf;
+                if (worstConf < 0.5) {
                     speakerLabel.classList.add("low-confidence");
-                } else if (confidence < 0.7) {
+                } else if (worstConf < 0.7) {
                     speakerLabel.classList.add("medium-confidence");
                 }
             } else {
@@ -754,20 +764,66 @@ class TranscriptEditor {
                 });
             } else {
                 // Speaker mode: wrap words in spans for selection
-                const words = paragraph.text.split(" ");
-                const segmentIds = paragraph.segment_ids;
+                if (paragraph.words && paragraph.words.length > 0) {
+                    // Use word-level data from API
+                    paragraph.words.forEach((wordData, wordIndex) => {
+                        const span = document.createElement("span");
+                        span.className = "word";
+                        span.textContent = wordData.text;
+                        span.dataset.segmentId = wordData.id;
 
-                words.forEach((word, wordIndex) => {
-                    const span = document.createElement("span");
-                    span.className = "word";
-                    span.textContent = word;
-                    span.dataset.segmentId = segmentIds[wordIndex] || segmentIds[segmentIds.length - 1];
-                    textDiv.appendChild(span);
+                        if (wordData.speaker_confidence !== null && wordData.speaker_confidence !== undefined) {
+                            span.dataset.speakerConf = wordData.speaker_confidence;
+                            if (wordData.speaker_confidence < 0.5) {
+                                span.classList.add("low-speaker-confidence");
+                            } else if (wordData.speaker_confidence < 0.7) {
+                                span.classList.add("medium-speaker-confidence");
+                            }
+                        }
 
-                    if (wordIndex < words.length - 1) {
-                        textDiv.appendChild(document.createTextNode(" "));
-                    }
-                });
+                        if (wordData.word_confidence !== null && wordData.word_confidence !== undefined) {
+                            span.dataset.wordConf = wordData.word_confidence;
+                            if (wordData.word_confidence < 0.5) {
+                                span.classList.add("low-word-confidence");
+                            } else if (wordData.word_confidence < 0.7) {
+                                span.classList.add("medium-word-confidence");
+                            }
+                        }
+
+                        const tooltipParts = [];
+                        if (wordData.speaker_confidence !== null && wordData.speaker_confidence !== undefined) {
+                            tooltipParts.push(`Speaker: ${Math.round(wordData.speaker_confidence * 100)}%`);
+                        }
+                        if (wordData.word_confidence !== null && wordData.word_confidence !== undefined) {
+                            tooltipParts.push(`Word: ${Math.round(wordData.word_confidence * 100)}%`);
+                        }
+                        if (tooltipParts.length > 0) {
+                            span.title = tooltipParts.join(" | ");
+                        }
+
+                        textDiv.appendChild(span);
+
+                        if (wordIndex < paragraph.words.length - 1) {
+                            textDiv.appendChild(document.createTextNode(" "));
+                        }
+                    });
+                } else {
+                    // Fallback: use text split (old API / missing words array)
+                    const words = paragraph.text.split(" ");
+                    const segmentIds = paragraph.segment_ids;
+
+                    words.forEach((word, wordIndex) => {
+                        const span = document.createElement("span");
+                        span.className = "word";
+                        span.textContent = word;
+                        span.dataset.segmentId = segmentIds[wordIndex] || segmentIds[segmentIds.length - 1];
+                        textDiv.appendChild(span);
+
+                        if (wordIndex < words.length - 1) {
+                            textDiv.appendChild(document.createTextNode(" "));
+                        }
+                    });
+                }
             }
 
             // Consolidated click handler on paragraph
