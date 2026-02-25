@@ -333,3 +333,176 @@ class TestAssignSpeakerToRangeLogsEdit:
                 break
         else:
             pytest.fail("edit_history insert not found")
+
+
+@pytest.mark.unit
+class TestEditParagraph:
+    """Tests for edit_paragraph with semantic diff logging."""
+
+    def _make_seg(self, id, word, episode_id=1, segment_index=0,
+                  start_time='1.0', end_time='2.0', speaker='Alice', speaker_id=1):
+        return {
+            'id': id, 'word': word, 'episode_id': episode_id,
+            'segment_index': segment_index,
+            'start_time': start_time, 'end_time': end_time,
+            'speaker': speaker, 'speaker_id': speaker_id,
+        }
+
+    def _history_entries(self, mock_cursor):
+        """Extract (sql, params) tuples for edit_history inserts."""
+        return [
+            params
+            for c in mock_cursor.execute.call_args_list
+            for sql, params in [c[0]]
+            if 'edit_history' in sql
+        ]
+
+    def _patch_cursor(self, mock_cursor):
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=mock_cursor)
+        cm.__exit__ = MagicMock(return_value=False)
+        return cm
+
+    def test_no_change_edit_creates_no_history(self):
+        """When new text matches existing words exactly, no edit_history rows are inserted."""
+        segs = [
+            self._make_seg(1, 'hello', segment_index=0),
+            self._make_seg(2, 'world', segment_index=1),
+        ]
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = segs
+
+        with patch('app.transcription.storage.get_cursor') as mock_get_cursor:
+            mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+            mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+            storage = TranscriptStorage()
+            result = storage.edit_paragraph([1, 2], 'hello world')
+
+        assert result == {'updated': 0, 'inserted': 0, 'deleted': 0}
+        assert self._history_entries(mock_cursor) == []
+
+    def test_single_word_correction_logs_word_field(self):
+        """Correcting a single misspelled word logs field='word' with old and new values."""
+        segs = [self._make_seg(1, 'helo', segment_index=0)]
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = segs
+
+        with patch('app.transcription.storage.get_cursor') as mock_get_cursor:
+            mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+            mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+            storage = TranscriptStorage()
+            result = storage.edit_paragraph([1], 'hello')
+
+        assert result == {'updated': 1, 'inserted': 0, 'deleted': 0}
+        entries = self._history_entries(mock_cursor)
+        assert len(entries) == 1
+        assert entries[0][2] == 'word'
+        assert entries[0][3] == 'helo'   # old_value
+        assert entries[0][4] == 'hello'  # new_value
+
+    def test_multi_word_to_single_word_replacement(self):
+        """Replacing two old words with one logs a word correction and a deletion."""
+        segs = [
+            self._make_seg(1, 'gonna', segment_index=0),
+            self._make_seg(2, 'be', segment_index=1),
+        ]
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = segs
+
+        with patch('app.transcription.storage.get_cursor') as mock_get_cursor:
+            mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+            mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+            storage = TranscriptStorage()
+            result = storage.edit_paragraph([1, 2], 'will')
+
+        assert result == {'updated': 1, 'inserted': 0, 'deleted': 1}
+        entries = self._history_entries(mock_cursor)
+        assert len(entries) == 2
+        fields = [e[2] for e in entries]
+        assert 'word' in fields
+        assert 'delete' in fields
+
+        word_entry = next(e for e in entries if e[2] == 'word')
+        assert word_entry[3] == 'gonna'  # old_value (joined old segment)
+        assert word_entry[4] == 'will'   # new_value
+
+        delete_entry = next(e for e in entries if e[2] == 'delete')
+        assert delete_entry[3] == 'be'   # old_value
+        assert delete_entry[4] is None   # new_value
+
+    def test_word_insertion_logs_insert_field(self):
+        """Inserting a new word between existing words logs field='insert'."""
+        segs = [
+            self._make_seg(1, 'hello', segment_index=0),
+            self._make_seg(2, 'world', segment_index=1),
+        ]
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = segs
+        mock_cursor.fetchone.return_value = {'id': 99}
+
+        with patch('app.transcription.storage.get_cursor') as mock_get_cursor:
+            mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+            mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+            storage = TranscriptStorage()
+            result = storage.edit_paragraph([1, 2], 'hello there world')
+
+        assert result == {'updated': 0, 'inserted': 1, 'deleted': 0}
+        entries = self._history_entries(mock_cursor)
+        assert len(entries) == 1
+        assert entries[0][2] == 'insert'
+        assert entries[0][3] is None       # old_value
+        assert entries[0][4] == 'there'    # new_value
+
+    def test_word_deletion_logs_delete_field(self):
+        """Deleting a word logs field='delete' with the removed word as old_value."""
+        segs = [
+            self._make_seg(1, 'hello', segment_index=0),
+            self._make_seg(2, 'there', segment_index=1),
+            self._make_seg(3, 'world', segment_index=2),
+        ]
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = segs
+
+        with patch('app.transcription.storage.get_cursor') as mock_get_cursor:
+            mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+            mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+            storage = TranscriptStorage()
+            result = storage.edit_paragraph([1, 2, 3], 'hello world')
+
+        assert result == {'updated': 0, 'inserted': 0, 'deleted': 1}
+        entries = self._history_entries(mock_cursor)
+        assert len(entries) == 1
+        assert entries[0][2] == 'delete'
+        assert entries[0][3] == 'there'  # old_value
+        assert entries[0][4] is None     # new_value
+
+    def test_complex_edit_only_logs_semantic_corrections(self):
+        """Equal (unchanged) words produce no edit_history entries; only changed words are logged."""
+        segs = [
+            self._make_seg(1, 'the', segment_index=0),
+            self._make_seg(2, 'quick', segment_index=1),
+            self._make_seg(3, 'brown', segment_index=2),
+            self._make_seg(4, 'fox', segment_index=3),
+        ]
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = segs
+
+        with patch('app.transcription.storage.get_cursor') as mock_get_cursor:
+            mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+            mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+            storage = TranscriptStorage()
+            result = storage.edit_paragraph([1, 2, 3, 4], 'the slow brown fox')
+
+        assert result == {'updated': 1, 'inserted': 0, 'deleted': 0}
+        entries = self._history_entries(mock_cursor)
+        # Only the changed word is logged — no positional noise from equal matches
+        assert len(entries) == 1
+        assert entries[0][2] == 'word'
+        assert entries[0][3] == 'quick'  # old_value
+        assert entries[0][4] == 'slow'   # new_value
