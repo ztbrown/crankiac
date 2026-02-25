@@ -903,6 +903,115 @@ def extract_clips(args):
     print(f"  Output directory: {args.output_dir}")
 
 
+def backfill_word_confidence(args):
+    """Re-extract word_confidence for episodes with missing data."""
+    import os
+    from pathlib import Path
+    from app.db.repository import EpisodeRepository
+    from app.transcription.storage import TranscriptStorage
+    from app.transcription.whisper_transcriber import get_transcriber
+    from app.patreon.downloader import AudioDownloader
+    from app.patreon.client import PatreonClient
+
+    session_id = os.environ.get("PATREON_SESSION_ID")
+    if not session_id:
+        print("Error: PATREON_SESSION_ID environment variable required")
+        sys.exit(1)
+
+    repo = EpisodeRepository()
+    storage = TranscriptStorage()
+
+    # Select episodes to process
+    if args.episode_id:
+        episode = repo.get_by_id(args.episode_id)
+        if not episode:
+            print(f"Episode ID {args.episode_id} not found")
+            sys.exit(1)
+        episodes = [episode]
+    else:
+        episodes = repo.get_with_missing_word_confidence(limit=args.limit)
+
+    print(f"Found {len(episodes)} episode(s) to backfill")
+
+    if args.dry_run:
+        from app.db.connection import get_cursor
+        for ep in episodes:
+            with get_cursor(commit=False) as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) as cnt FROM transcript_segments WHERE episode_id = %s AND word_confidence IS NULL",
+                    (ep.id,)
+                )
+                row = cursor.fetchone()
+                null_count = row["cnt"] if row else 0
+            print(f"  [{ep.id}] {ep.title} — {null_count} segments missing word_confidence")
+        print("\nDry run complete. No changes made.")
+        return
+
+    transcriber = get_transcriber(args.model)
+    patreon = PatreonClient(session_id)
+    downloader = AudioDownloader(session_id, "downloads/audio")
+
+    stats = {"total": len(episodes), "success": 0, "failed": 0, "skipped": 0}
+
+    for i, episode in enumerate(episodes, 1):
+        print(f"[{i}/{len(episodes)}] {episode.title}")
+
+        if not storage.has_transcript(episode.id):
+            print(f"  No transcript, skipping")
+            stats["skipped"] += 1
+            continue
+
+        # Resolve audio URL
+        audio_url = None
+        if episode.patreon_id:
+            try:
+                audio_url = patreon.get_audio_url(episode.patreon_id)
+            except Exception as e:
+                print(f"  Could not fetch fresh audio URL: {e}")
+        if not audio_url:
+            audio_url = episode.audio_url
+        if not audio_url:
+            print(f"  No audio URL, skipping")
+            stats["skipped"] += 1
+            continue
+
+        try:
+            print(f"  Downloading audio...")
+            download_result = downloader.download(audio_url, episode.patreon_id)
+            if not download_result.success:
+                print(f"  Download failed: {download_result.error}")
+                stats["failed"] += 1
+                continue
+
+            print(f"  Transcribing (word_timestamps=True)...")
+            transcript = transcriber.transcribe(download_result.file_path)
+            print(f"  Got {len(transcript.segments)} words from Whisper")
+
+            # Build segment_index -> confidence map from the new transcription
+            index_to_confidence = {
+                idx: seg.word_confidence
+                for idx, seg in enumerate(transcript.segments)
+                if seg.word_confidence is not None
+            }
+
+            updated = storage.update_word_confidence_batch(episode.id, index_to_confidence)
+            print(f"  Updated {updated} segments with word_confidence")
+            stats["success"] += 1
+
+            # Cleanup audio
+            audio_path = Path(download_result.file_path)
+            if audio_path.exists():
+                audio_path.unlink()
+                print(f"  Cleaned up audio file")
+
+        except Exception as e:
+            print(f"  Error: {e}")
+            stats["failed"] += 1
+
+    print(f"\nResults: {stats['success']}/{stats['total']} succeeded, "
+          f"{stats['failed']} failed, {stats['skipped']} skipped")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Crankiac management CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -1007,6 +1116,13 @@ def main():
     enroll_parser.add_argument("--audio-dir", default="data/reference_audio", help="Root directory with speaker subdirectories (default: data/reference_audio)")
     enroll_parser.add_argument("--output-dir", default="data/speaker_embeddings", help="Directory to save embeddings (default: data/speaker_embeddings)")
 
+    # backfill-word-confidence command
+    bwc_parser = subparsers.add_parser("backfill-word-confidence", help="Re-extract word_confidence for episodes with missing data")
+    bwc_parser.add_argument("--episode-id", type=int, metavar="ID", help="Backfill a specific episode by database ID")
+    bwc_parser.add_argument("--limit", type=int, default=None, help="Max episodes to process in batch mode")
+    bwc_parser.add_argument("--model", default="large-v3", help="Whisper model to use (default: large-v3)")
+    bwc_parser.add_argument("--dry-run", action="store_true", help="Preview what would be updated without making changes")
+
     # extract-clips command
     clips_parser = subparsers.add_parser("extract-clips", help="Extract speaker audio clips from transcribed episodes")
     clips_parser.add_argument("--episode", type=int, metavar="ID", help="Extract clips from a specific episode by database ID")
@@ -1045,6 +1161,8 @@ def main():
         enroll_speaker_cmd(args)
     elif args.command == "extract-clips":
         extract_clips(args)
+    elif args.command == "backfill-word-confidence":
+        backfill_word_confidence(args)
     else:
         parser.print_help()
         sys.exit(1)
