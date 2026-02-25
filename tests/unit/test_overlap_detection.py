@@ -275,12 +275,12 @@ def test_get_episode_paragraphs_has_overlap_false_when_none_overlap():
         {
             "id": 1, "word": "hello", "start_time": Decimal("0.0"), "end_time": Decimal("0.5"),
             "segment_index": 0, "speaker": "A", "speaker_name": "Alice",
-            "speaker_confidence": None, "is_overlap": False,
+            "speaker_confidence": None, "word_confidence": None, "is_overlap": False,
         },
         {
             "id": 2, "word": "world", "start_time": Decimal("0.5"), "end_time": Decimal("1.0"),
             "segment_index": 1, "speaker": "A", "speaker_name": "Alice",
-            "speaker_confidence": None, "is_overlap": False,
+            "speaker_confidence": None, "word_confidence": None, "is_overlap": False,
         },
     ]
 
@@ -303,12 +303,12 @@ def test_get_episode_paragraphs_has_overlap_true_when_any_word_overlaps():
         {
             "id": 1, "word": "hello", "start_time": Decimal("0.0"), "end_time": Decimal("0.5"),
             "segment_index": 0, "speaker": "A", "speaker_name": "Alice",
-            "speaker_confidence": None, "is_overlap": False,
+            "speaker_confidence": None, "word_confidence": None, "is_overlap": False,
         },
         {
             "id": 2, "word": "world", "start_time": Decimal("0.5"), "end_time": Decimal("1.0"),
             "segment_index": 1, "speaker": "A", "speaker_name": "Alice",
-            "speaker_confidence": None, "is_overlap": True,
+            "speaker_confidence": None, "word_confidence": None, "is_overlap": True,
         },
     ]
 
@@ -332,19 +332,19 @@ def test_get_episode_paragraphs_has_overlap_only_for_affected_paragraph():
         {
             "id": 1, "word": "hello", "start_time": Decimal("0.0"), "end_time": Decimal("0.5"),
             "segment_index": 0, "speaker": "A", "speaker_name": "Alice",
-            "speaker_confidence": None, "is_overlap": False,
+            "speaker_confidence": None, "word_confidence": None, "is_overlap": False,
         },
         # Paragraph 2: speaker B, has overlap
         {
             "id": 2, "word": "crosstalk", "start_time": Decimal("0.5"), "end_time": Decimal("1.0"),
             "segment_index": 1, "speaker": "B", "speaker_name": "Bob",
-            "speaker_confidence": None, "is_overlap": True,
+            "speaker_confidence": None, "word_confidence": None, "is_overlap": True,
         },
         # Paragraph 3: speaker A again, no overlap
         {
             "id": 3, "word": "ok", "start_time": Decimal("1.0"), "end_time": Decimal("1.5"),
             "segment_index": 2, "speaker": "A", "speaker_name": "Alice",
-            "speaker_confidence": None, "is_overlap": False,
+            "speaker_confidence": None, "word_confidence": None, "is_overlap": False,
         },
     ]
 

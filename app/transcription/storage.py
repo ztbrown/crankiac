@@ -36,6 +36,7 @@ class TranscriptStorage:
                 segment_index=idx,
                 speaker=getattr(seg, 'speaker', None),
                 speaker_confidence=float(sc) if (sc := getattr(seg, 'speaker_confidence', None)) is not None else None,
+                word_confidence=float(wc) if (wc := getattr(seg, 'word_confidence', None)) is not None else None,
             )
             for idx, seg in enumerate(result.segments)
         ]
@@ -105,19 +106,20 @@ class TranscriptStorage:
                     (s.episode_id, s.word, str(s.start_time), str(s.end_time),
                      s.segment_index, s.speaker, speaker_id_cache.get(s.speaker),
                      float(s.speaker_confidence) if s.speaker_confidence is not None else None,
-                     getattr(s, 'is_overlap', False))
+                     getattr(s, 'is_overlap', False),
+                     float(s.word_confidence) if s.word_confidence is not None else None)
                     for s in batch
                 ]
 
                 # Use execute_values for efficient batch insert
                 args_str = ",".join(
-                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s, %s, %s)", v).decode("utf-8")
+                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", v).decode("utf-8")
                     for v in values
                 )
 
                 cursor.execute(f"""
                     INSERT INTO transcript_segments
-                    (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id, speaker_confidence, is_overlap)
+                    (episode_id, word, start_time, end_time, segment_index, speaker, speaker_id, speaker_confidence, is_overlap, word_confidence)
                     VALUES {args_str}
                 """)
 
@@ -530,6 +532,7 @@ class TranscriptStorage:
                     ts.segment_index,
                     ts.speaker,
                     ts.speaker_confidence,
+                    ts.word_confidence,
                     ts.is_overlap,
                     s.name as speaker_name
                 FROM transcript_segments ts
@@ -553,6 +556,14 @@ class TranscriptStorage:
                 speaker = row["speaker_name"] or row["speaker"] or "Unknown Speaker"
 
                 confidence = float(row["speaker_confidence"]) if row["speaker_confidence"] is not None else None
+                word_conf = float(row["word_confidence"]) if row["word_confidence"] is not None else None
+
+                word_entry = {
+                    "id": row["id"],
+                    "text": row["word"],
+                    "speaker_confidence": confidence,
+                    "word_confidence": word_conf,
+                }
 
                 # Start new paragraph if speaker changed or this is the first segment
                 is_overlap = bool(row["is_overlap"])
@@ -569,12 +580,15 @@ class TranscriptStorage:
                         "segment_ids": [row["id"]],
                         "speaker_confidence": confidence,
                         "has_overlap": is_overlap,
+                        "words": [word_entry],
+                        "min_word_confidence": word_conf,
                     }
                 else:
                     # Add to current paragraph
                     current_paragraph["text"] += " " + row["word"]
                     current_paragraph["end_time"] = float(row["end_time"])
                     current_paragraph["segment_ids"].append(row["id"])
+                    current_paragraph["words"].append(word_entry)
                     # Any word with overlap makes the paragraph flagged
                     if is_overlap:
                         current_paragraph["has_overlap"] = True
@@ -585,6 +599,14 @@ class TranscriptStorage:
                         else:
                             current_paragraph["speaker_confidence"] = min(
                                 current_paragraph["speaker_confidence"], confidence
+                            )
+                    # Track minimum word confidence
+                    if word_conf is not None:
+                        if current_paragraph["min_word_confidence"] is None:
+                            current_paragraph["min_word_confidence"] = word_conf
+                        else:
+                            current_paragraph["min_word_confidence"] = min(
+                                current_paragraph["min_word_confidence"], word_conf
                             )
 
             # Add the last paragraph

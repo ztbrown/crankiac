@@ -1,7 +1,9 @@
 """Unit tests for TranscriptStorage class."""
 import pytest
+from decimal import Decimal
 from unittest.mock import MagicMock, patch, call
 from app.transcription.storage import TranscriptStorage, BATCH_SIZE
+from app.db.models import TranscriptSegment
 
 
 @pytest.mark.unit
@@ -118,3 +120,151 @@ def test_update_speakers_by_ids_speaker_name_formats():
             assert result == 1
             call_args = mock_cursor.execute.call_args[0]
             assert call_args[1][0] == speaker_name
+
+
+# ─── bulk_insert: word_confidence tests ───────────────────────────────────────
+
+@pytest.mark.unit
+def test_bulk_insert_includes_word_confidence():
+    """bulk_insert should include word_confidence in INSERT statement."""
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = None  # no speaker_id
+    mock_cursor.mogrify.side_effect = lambda fmt, vals: (fmt % tuple(str(v) for v in vals)).encode()
+
+    with patch("app.transcription.storage.get_cursor") as mock_get_cursor:
+        mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        storage = TranscriptStorage()
+        seg = TranscriptSegment(
+            id=None,
+            episode_id=1,
+            word="hello",
+            start_time=Decimal("0.0"),
+            end_time=Decimal("0.5"),
+            segment_index=0,
+            speaker=None,
+            word_confidence=0.95,
+        )
+        storage.bulk_insert([seg])
+
+        assert mock_cursor.execute.called
+        sql = mock_cursor.execute.call_args[0][0]
+        assert "word_confidence" in sql
+
+
+@pytest.mark.unit
+def test_bulk_insert_word_confidence_null_handled():
+    """bulk_insert should handle NULL word_confidence gracefully."""
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = None
+    mock_cursor.mogrify.side_effect = lambda fmt, vals: (fmt % tuple(str(v) for v in vals)).encode()
+
+    with patch("app.transcription.storage.get_cursor") as mock_get_cursor:
+        mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        storage = TranscriptStorage()
+        seg = TranscriptSegment(
+            id=None,
+            episode_id=1,
+            word="hello",
+            start_time=Decimal("0.0"),
+            end_time=Decimal("0.5"),
+            segment_index=0,
+            speaker=None,
+            word_confidence=None,
+        )
+        # Should not raise
+        result = storage.bulk_insert([seg])
+        assert result == 1
+
+
+# ─── get_episode_paragraphs: words array and min_word_confidence tests ─────────
+
+@pytest.mark.unit
+def test_get_episode_paragraphs_includes_words_array():
+    """Paragraphs should include a words array with per-word metadata."""
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [
+        {
+            "id": 1, "word": "hello", "start_time": Decimal("0.0"), "end_time": Decimal("0.5"),
+            "segment_index": 0, "speaker": "A", "speaker_name": "Alice",
+            "speaker_confidence": Decimal("0.9"), "word_confidence": Decimal("0.8"), "is_overlap": False,
+        },
+        {
+            "id": 2, "word": "world", "start_time": Decimal("0.5"), "end_time": Decimal("1.0"),
+            "segment_index": 1, "speaker": "A", "speaker_name": "Alice",
+            "speaker_confidence": Decimal("0.9"), "word_confidence": Decimal("0.6"), "is_overlap": False,
+        },
+    ]
+
+    with patch("app.transcription.storage.get_cursor") as mock_get_cursor:
+        mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        storage = TranscriptStorage()
+        paragraphs = storage.get_episode_paragraphs(1)
+
+        assert len(paragraphs) == 1
+        para = paragraphs[0]
+        assert "words" in para
+        assert len(para["words"]) == 2
+        assert para["words"][0] == {"id": 1, "text": "hello", "speaker_confidence": 0.9, "word_confidence": 0.8}
+        assert para["words"][1] == {"id": 2, "text": "world", "speaker_confidence": 0.9, "word_confidence": 0.6}
+
+
+@pytest.mark.unit
+def test_get_episode_paragraphs_min_word_confidence():
+    """min_word_confidence should be the minimum word_confidence in the paragraph."""
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [
+        {
+            "id": 1, "word": "hello", "start_time": Decimal("0.0"), "end_time": Decimal("0.5"),
+            "segment_index": 0, "speaker": "A", "speaker_name": "Alice",
+            "speaker_confidence": None, "word_confidence": Decimal("0.9"), "is_overlap": False,
+        },
+        {
+            "id": 2, "word": "world", "start_time": Decimal("0.5"), "end_time": Decimal("1.0"),
+            "segment_index": 1, "speaker": "A", "speaker_name": "Alice",
+            "speaker_confidence": None, "word_confidence": Decimal("0.4"), "is_overlap": False,
+        },
+        {
+            "id": 3, "word": "there", "start_time": Decimal("1.0"), "end_time": Decimal("1.5"),
+            "segment_index": 2, "speaker": "A", "speaker_name": "Alice",
+            "speaker_confidence": None, "word_confidence": Decimal("0.7"), "is_overlap": False,
+        },
+    ]
+
+    with patch("app.transcription.storage.get_cursor") as mock_get_cursor:
+        mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        storage = TranscriptStorage()
+        paragraphs = storage.get_episode_paragraphs(1)
+
+        assert len(paragraphs) == 1
+        assert paragraphs[0]["min_word_confidence"] == pytest.approx(0.4)
+
+
+@pytest.mark.unit
+def test_get_episode_paragraphs_min_word_confidence_null_when_no_data():
+    """min_word_confidence should be None when word_confidence is not present."""
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [
+        {
+            "id": 1, "word": "hello", "start_time": Decimal("0.0"), "end_time": Decimal("0.5"),
+            "segment_index": 0, "speaker": "A", "speaker_name": "Alice",
+            "speaker_confidence": None, "word_confidence": None, "is_overlap": False,
+        },
+    ]
+
+    with patch("app.transcription.storage.get_cursor") as mock_get_cursor:
+        mock_get_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_get_cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        storage = TranscriptStorage()
+        paragraphs = storage.get_episode_paragraphs(1)
+
+        assert len(paragraphs) == 1
+        assert paragraphs[0]["min_word_confidence"] is None
