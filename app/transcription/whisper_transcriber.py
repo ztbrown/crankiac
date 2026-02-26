@@ -10,6 +10,7 @@ class WordSegment:
     start_time: Decimal
     end_time: Decimal
     speaker: Optional[str] = None
+    speaker_confidence: Optional[Decimal] = None
     word_confidence: Optional[Decimal] = None
 
 @dataclass
