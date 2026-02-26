@@ -38,6 +38,9 @@ class EpisodePipeline:
         expected_speakers: Optional[list[str]] = None,
         enable_vad: bool = False,
         corrections_file: Optional[str] = "data/correction_dictionary.json",
+        enable_llm_correction: bool = False,
+        llm_correction_model: str = "claude-haiku-4-5-20251001",
+        llm_correction_threshold: float = 0.7,
     ):
         """
         Initialize the pipeline.
@@ -56,6 +59,10 @@ class EpisodePipeline:
             embeddings_dir: Directory containing reference speaker embeddings.
             enable_vad: Whether to run Silero VAD pre-filtering before transcription.
             corrections_file: Path to correction_dictionary.json (None to disable).
+            enable_llm_correction: Whether to run LLM-based correction after the
+                correction dictionary step. Requires word_confidence data. Default False.
+            llm_correction_model: Claude model for LLM correction.
+            llm_correction_threshold: Confidence threshold for flagging words.
         """
         self.session_id = session_id or os.environ.get("PATREON_SESSION_ID")
         if not self.session_id:
@@ -72,6 +79,16 @@ class EpisodePipeline:
         self.corrections = load_corrections(corrections_file)
         if self.corrections:
             logger.info(f"Loaded {len(self.corrections)} word corrections")
+
+        # Initialize LLM corrector if enabled
+        self.llm_corrector = None
+        if enable_llm_correction:
+            from app.transcription.llm_corrector import LLMCorrector
+            self.llm_corrector = LLMCorrector(
+                model=llm_correction_model,
+                threshold=llm_correction_threshold,
+            )
+            logger.info("LLM correction enabled")
 
         # Load vocabulary hints from file and build initial_prompt for Whisper
         self.vocabulary_hints = self._load_vocabulary(vocabulary_file)
@@ -276,6 +293,20 @@ class EpisodePipeline:
             if self.corrections:
                 transcript.segments = apply_corrections(transcript.segments, self.corrections)
                 logger.info(f"  Applied {len(self.corrections)} word corrections")
+
+            # Apply LLM corrections (optional, after correction dictionary)
+            if self.llm_corrector:
+                has_confidence = any(
+                    s.word_confidence is not None for s in transcript.segments
+                )
+                if has_confidence:
+                    logger.info(f"  Running LLM correction...")
+                    transcript.segments = self.llm_corrector.correct_segments(
+                        transcript.segments
+                    )
+                    logger.info(f"  LLM correction complete")
+                else:
+                    logger.warning(f"  Skipping LLM correction: no word_confidence data")
 
             # Store
             logger.info(f"  Storing transcript...")

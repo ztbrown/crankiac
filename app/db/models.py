@@ -16,6 +16,7 @@ class Episode:
     is_free: bool = False
     processed: bool = False
     manually_reviewed: bool = False
+    llm_corrected: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
