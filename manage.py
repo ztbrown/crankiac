@@ -573,6 +573,184 @@ def cleanup_episodes(args):
     print("\n✅ Done!")
 
 
+def llm_correct_cmd(args):
+    """Run LLM-based correction on low-confidence transcript words."""
+    from app.db.connection import get_cursor
+    from app.db.repository import EpisodeRepository
+    from app.db.models import Episode
+    from app.transcription.llm_corrector import LLMCorrector
+
+    repo = EpisodeRepository()
+    corrector = LLMCorrector(model=args.model, threshold=args.threshold)
+
+    # Determine episodes to process
+    batch_mode = not args.episode and not args.episodes
+    if args.episode:
+        episode = repo.get_by_id(args.episode)
+        if not episode:
+            print(f"Episode ID {args.episode} not found")
+            sys.exit(1)
+        episodes = [episode]
+    elif args.episodes:
+        episode_numbers = [int(n.strip()) for n in args.episodes.split(",")]
+        episodes = repo.get_by_episode_numbers(episode_numbers)
+        if not episodes:
+            print(f"No episodes found matching: {args.episodes}")
+            sys.exit(1)
+    else:
+        # Batch mode: get episodes with word_confidence data, not yet corrected
+        with get_cursor(commit=False) as cursor:
+            if args.force:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT e.*
+                    FROM episodes e
+                    INNER JOIN transcript_segments ts ON ts.episode_id = e.id
+                    WHERE ts.word_confidence IS NOT NULL
+                    ORDER BY e.published_at DESC
+                    LIMIT %s
+                    """,
+                    (args.limit,)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT e.*
+                    FROM episodes e
+                    INNER JOIN transcript_segments ts ON ts.episode_id = e.id
+                    WHERE e.llm_corrected = FALSE
+                      AND e.manually_reviewed = FALSE
+                      AND ts.word_confidence IS NOT NULL
+                    ORDER BY e.published_at DESC
+                    LIMIT %s
+                    """,
+                    (args.limit,)
+                )
+            rows = cursor.fetchall()
+        episodes = [Episode(**row) for row in rows]
+
+    print(f"Found {len(episodes)} episode(s) to process")
+
+    total_corrections = 0
+    total_skipped = 0
+
+    for episode in episodes:
+        print(f"\n[{episode.id}] {episode.title}")
+
+        # In batch mode, skip manually_reviewed unless --force
+        if batch_mode and episode.manually_reviewed and not args.force:
+            print(f"  Skipping (manually_reviewed=TRUE, use --force to override)")
+            total_skipped += 1
+            continue
+
+        # Fetch segments
+        with get_cursor(commit=False) as cursor:
+            cursor.execute(
+                """SELECT id, word, segment_index, word_confidence, speaker
+                   FROM transcript_segments
+                   WHERE episode_id = %s
+                   ORDER BY segment_index""",
+                (episode.id,)
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            print(f"  WARNING: No transcript found, skipping")
+            total_skipped += 1
+            continue
+
+        segments = [dict(row) for row in rows]
+        word_count = len(segments)
+
+        has_confidence = any(s.get("word_confidence") is not None for s in segments)
+        if not has_confidence:
+            print(f"  WARNING: No word_confidence data found, skipping")
+            total_skipped += 1
+            continue
+
+        regions = corrector.identify_low_confidence_regions(segments)
+        chunks = corrector.build_chunks(segments, regions)
+        low_conf_count = sum(len(r["flagged"]) for r in regions)
+
+        print(f"  Words: {word_count}, Low-confidence: {low_conf_count}, Chunks: {len(chunks)}")
+
+        if not chunks:
+            print(f"  No low-confidence regions found")
+            continue
+
+        if args.dry_run:
+            ep_corrections = 0
+            total_input_tokens = 0
+
+            for i, chunk in enumerate(chunks):
+                formatted = corrector.format_chunk(chunk)
+                total_input_tokens += len(formatted.split()) * 2  # rough token estimate
+
+                if args.verbose:
+                    print(f"\n  Chunk {i + 1} prompt:")
+                    print(f"    {formatted}")
+
+                raw_corrections = corrector.call_llm(formatted)
+
+                if args.verbose:
+                    print(f"  Chunk {i + 1} response: {raw_corrections}")
+
+                flagged_ids = {chunk["segments"][j]["id"] for j in chunk["flagged"]}
+                id_to_seg = {seg["id"]: seg for seg in chunk["segments"]}
+
+                for key, new_word in raw_corrections.items():
+                    try:
+                        seg_id = int(key)
+                    except (ValueError, TypeError):
+                        continue
+                    if seg_id not in flagged_ids:
+                        continue
+                    new_word = str(new_word)
+                    if " " in new_word:
+                        continue
+                    seg = id_to_seg.get(seg_id)
+                    if not seg or seg["word"] == new_word:
+                        continue
+
+                    conf = seg.get("word_confidence")
+                    conf_str = f"{float(conf):.2f}" if conf is not None else "?"
+                    print(f"  [{seg_id}] {seg['word']!r} -> {new_word!r}  (confidence: {conf_str})")
+                    ep_corrections += 1
+
+            # Estimated cost (Haiku: $0.80/MTok input, $4.00/MTok output)
+            estimated_output_tokens = len(chunks) * 50
+            input_cost = total_input_tokens * 0.0000008
+            output_cost = estimated_output_tokens * 0.000004
+            total_cost = input_cost + output_cost
+
+            print(f"  Summary: {ep_corrections} correction(s) would be applied")
+            print(f"  Estimated cost: ${total_cost:.4f}")
+            total_corrections += ep_corrections
+
+        else:
+            # For --force, reset llm_corrected so advisory lock can claim it
+            if args.force and episode.llm_corrected:
+                with get_cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE episodes SET llm_corrected = FALSE WHERE id = %s",
+                        (episode.id,)
+                    )
+
+            count = corrector.correct_episode(episode.id)
+            if count == -1:
+                print(f"  Already corrected (skipped)")
+                total_skipped += 1
+            else:
+                print(f"  Applied {count} correction(s)")
+                total_corrections += count
+
+    print(f"\nResults: {total_corrections} total correction(s)")
+    if total_skipped:
+        print(f"  Skipped: {total_skipped}")
+    if args.dry_run:
+        print("  (Dry run - no changes made)")
+
+
 def mine_corrections_cmd(args):
     """Mine frequent corrections from edit_history and output JSON."""
     import json
@@ -1116,6 +1294,17 @@ def main():
     enroll_parser.add_argument("--audio-dir", default="data/reference_audio", help="Root directory with speaker subdirectories (default: data/reference_audio)")
     enroll_parser.add_argument("--output-dir", default="data/speaker_embeddings", help="Directory to save embeddings (default: data/speaker_embeddings)")
 
+    # llm-correct command
+    llm_parser = subparsers.add_parser("llm-correct", help="Run LLM-based correction on low-confidence transcript words")
+    llm_parser.add_argument("--episode", type=int, metavar="ID", help="Correct a specific episode by database ID")
+    llm_parser.add_argument("--episodes", type=str, help="Comma-separated episode numbers to correct (e.g., 1003,1006)")
+    llm_parser.add_argument("--limit", type=int, default=10, help="Max episodes to process in batch mode (default: 10)")
+    llm_parser.add_argument("--model", default="claude-haiku-4-5-20251001", help="Claude model to use (default: claude-haiku-4-5-20251001)")
+    llm_parser.add_argument("--threshold", type=float, default=0.7, help="Confidence threshold below which words are flagged (default: 0.7)")
+    llm_parser.add_argument("--dry-run", action="store_true", help="Show corrections without applying to database")
+    llm_parser.add_argument("--force", action="store_true", help="Re-run on already-corrected episodes and ignore manually_reviewed flag")
+    llm_parser.add_argument("--verbose", "-v", action="store_true", help="Show full prompts and responses")
+
     # backfill-word-confidence command
     bwc_parser = subparsers.add_parser("backfill-word-confidence", help="Re-extract word_confidence for episodes with missing data")
     bwc_parser.add_argument("--episode-id", type=int, metavar="ID", help="Backfill a specific episode by database ID")
@@ -1161,6 +1350,8 @@ def main():
         enroll_speaker_cmd(args)
     elif args.command == "extract-clips":
         extract_clips(args)
+    elif args.command == "llm-correct":
+        llm_correct_cmd(args)
     elif args.command == "backfill-word-confidence":
         backfill_word_confidence(args)
     else:
