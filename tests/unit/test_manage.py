@@ -256,10 +256,10 @@ class TestPipelineAcceptsDiarizationParams:
     def test_pipeline_diarization_disabled_by_default(
         self, mock_repo, mock_storage, mock_transcriber, mock_downloader, mock_patreon
     ):
-        """Test that EpisodePipeline has diarization disabled by default."""
+        """Test that EpisodePipeline has diarization enabled by default."""
         from app.pipeline import EpisodePipeline
 
         pipeline = EpisodePipeline(session_id="test-session")
 
-        assert pipeline.enable_diarization is False
-        assert pipeline.diarizer is None
+        assert pipeline.enable_diarization is True
+        assert pipeline.diarizer is not None

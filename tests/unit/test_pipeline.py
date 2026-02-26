@@ -469,10 +469,9 @@ def test_pipeline_accepts_speaker_id_params():
 
 
 @pytest.mark.unit
-def test_pipeline_speaker_id_disabled_by_default(pipeline):
-    """Speaker identification is disabled by default."""
-    assert pipeline.enable_speaker_id is False
-    assert pipeline.speaker_identifier is None
+def test_pipeline_speaker_id_enabled_by_default(pipeline):
+    """Speaker identification is enabled by default."""
+    assert pipeline.enable_speaker_id is True
 
 
 @pytest.mark.unit
