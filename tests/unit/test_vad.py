@@ -1,8 +1,7 @@
-"""Tests for VAD pre-filtering and timestamp remapping."""
-import os
+"""Tests for VAD pre-filtering, timestamp remapping, and faster-whisper VAD integration."""
 import pytest
 from decimal import Decimal
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 from app.transcription.vad import (
     VoiceActivityDetector,
@@ -12,7 +11,6 @@ from app.transcription.vad import (
 from app.transcription.whisper_transcriber import (
     WhisperTranscriber,
     get_transcriber,
-    TranscriptResult,
     WordSegment,
 )
 
@@ -30,29 +28,20 @@ class TestRemapTimestamps:
 
     def test_single_segment_offset(self):
         segments = [SpeechSegment(start=10.0, end=20.0)]
-        # 0.0 in filtered → 10.0 in original
         assert remap_timestamps(0.0, segments) == 10.0
-        # 5.0 in filtered → 15.0 in original
         assert remap_timestamps(5.0, segments) == 15.0
-        # 10.0 (boundary) → 20.0
         assert remap_timestamps(10.0, segments) == 20.0
 
     def test_two_segments(self):
         segments = [
-            SpeechSegment(start=5.0, end=10.0),   # 5s of speech
-            SpeechSegment(start=20.0, end=25.0),  # 5s of speech, 10s silence removed
+            SpeechSegment(start=5.0, end=10.0),
+            SpeechSegment(start=20.0, end=25.0),
         ]
-        # 0.0 → 5.0 (start of first segment)
         assert remap_timestamps(0.0, segments) == 5.0
-        # 3.0 → 8.0 (within first segment)
         assert remap_timestamps(3.0, segments) == 8.0
-        # 5.0 (exactly at boundary) — belongs to first segment → 10.0 (end of first)
         assert remap_timestamps(5.0, segments) == 10.0
-        # 6.0 (in second segment: offset 1.0) → 21.0
         assert remap_timestamps(6.0, segments) == 21.0
-        # 7.5 → 22.5 (within second segment)
         assert remap_timestamps(7.5, segments) == 22.5
-        # 10.0 (end of second segment) → 25.0
         assert remap_timestamps(10.0, segments) == 25.0
 
     def test_beyond_all_segments_clamps_to_last_end(self):
@@ -60,7 +49,6 @@ class TestRemapTimestamps:
             SpeechSegment(start=0.0, end=5.0),
             SpeechSegment(start=10.0, end=15.0),
         ]
-        # 100s beyond all segments → last end
         assert remap_timestamps(100.0, segments) == 15.0
 
     def test_at_segment_boundary_falls_in_first_segment(self):
@@ -68,8 +56,6 @@ class TestRemapTimestamps:
             SpeechSegment(start=0.0, end=3.0),
             SpeechSegment(start=6.0, end=9.0),
         ]
-        # 3.0 is the boundary (end of first segment duration).
-        # With <= semantics: belongs to first segment → maps to 3.0 (end of first)
         result = remap_timestamps(3.0, segments)
         assert result == 3.0
 
@@ -166,10 +152,9 @@ class TestVoiceActivityDetector:
         audio_file.write_bytes(b"fake audio")
 
         speech_segs = [
-            SpeechSegment(start=1.0, end=3.0),  # 2s
-            SpeechSegment(start=5.0, end=7.0),  # 2s
+            SpeechSegment(start=1.0, end=3.0),
+            SpeechSegment(start=5.0, end=7.0),
         ]
-        # 10s at 16kHz — large enough to cover both segments
         fake_waveform = torch.zeros(1, 160000)
         sample_rate = 16000
 
@@ -187,17 +172,38 @@ class TestVoiceActivityDetector:
         saved_path, saved_tensor, saved_sr = mock_save.call_args[0]
         assert saved_path == str(output_file)
         assert saved_sr == sample_rate
-        # Expect 4s of audio: 2s from seg1 + 2s from seg2 = 4 * 16000 = 64000 samples
         assert saved_tensor.shape[1] == 64000
 
 
 # ---------------------------------------------------------------------------
-# WhisperTranscriber with vad_filter
+# WhisperTranscriber with vad_filter (faster-whisper built-in VAD)
 # ---------------------------------------------------------------------------
+
+def _make_word(word, start, end, probability=None):
+    w = MagicMock()
+    w.word = word
+    w.start = start
+    w.end = end
+    w.probability = probability
+    return w
+
+
+def _make_segment(words):
+    seg = MagicMock()
+    seg.words = words
+    return seg
+
+
+def _make_info(language="en", duration=1.0):
+    info = MagicMock()
+    info.language = language
+    info.duration = duration
+    return info
+
 
 @pytest.mark.unit
 class TestWhisperTranscriberVAD:
-    """Tests for WhisperTranscriber.vad_filter integration."""
+    """Tests for WhisperTranscriber.vad_filter integration with faster-whisper."""
 
     def test_init_vad_filter_default_false(self):
         t = WhisperTranscriber()
@@ -207,128 +213,74 @@ class TestWhisperTranscriberVAD:
         t = WhisperTranscriber(vad_filter=True)
         assert t.vad_filter is True
 
-    def test_transcribe_no_vad_skips_vad(self, tmp_path):
-        """When vad_filter=False, VAD should not be called."""
+    def test_transcribe_no_vad_does_not_pass_vad_params(self, tmp_path):
+        """When vad_filter=False, vad_filter/vad_parameters should not be in kwargs."""
         audio_file = tmp_path / "audio.mp3"
         audio_file.write_bytes(b"fake audio")
 
+        words = [_make_word("hello", 0.0, 1.0)]
+        segment = _make_segment(words)
+        info = _make_info()
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = {
-            "text": "hello",
-            "language": "en",
-            "segments": [
-                {"start": 0.0, "end": 1.0, "words": [
-                    {"word": "hello", "start": 0.0, "end": 1.0}
-                ]}
-            ],
-        }
+        mock_model.transcribe.return_value = (iter([segment]), info)
 
-        with patch("whisper.load_model", return_value=mock_model), \
-             patch("app.transcription.vad.VoiceActivityDetector") as mock_vad_cls:
+        with patch("app.transcription.whisper_transcriber.WhisperModel",
+                    return_value=mock_model):
             t = WhisperTranscriber(model_name="base", vad_filter=False)
-            result = t.transcribe(str(audio_file))
+            t.transcribe(str(audio_file))
 
-        mock_vad_cls.assert_not_called()
-        assert result.segments[0].start_time == Decimal("0.0")
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert "vad_filter" not in call_kwargs
+        assert "vad_parameters" not in call_kwargs
 
-    def test_transcribe_with_vad_remaps_timestamps(self, tmp_path):
-        """When vad_filter=True, timestamps are remapped via speech_segments."""
+    def test_transcribe_with_vad_passes_vad_params(self, tmp_path):
+        """When vad_filter=True, vad_filter and vad_parameters are passed to model."""
         audio_file = tmp_path / "audio.mp3"
         audio_file.write_bytes(b"fake audio")
-        filtered_file = tmp_path / "filtered.wav"
-        filtered_file.write_bytes(b"filtered audio")
 
-        # Whisper sees the filtered file and returns timestamps in filtered time:
-        # "hello" at 0.0–0.5, "world" at 0.5–1.0
+        words = [
+            _make_word("hello", 0.0, 0.5),
+            _make_word("world", 0.5, 1.0),
+        ]
+        segment = _make_segment(words)
+        info = _make_info()
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = {
-            "text": "hello world",
-            "language": "en",
-            "segments": [
-                {"start": 0.0, "end": 1.0, "words": [
-                    {"word": "hello", "start": 0.0, "end": 0.5},
-                    {"word": "world", "start": 0.5, "end": 1.0},
-                ]}
-            ],
-        }
+        mock_model.transcribe.return_value = (iter([segment]), info)
 
-        # VAD found speech from 10.0–11.0 in original (1s segment)
-        speech_segs = [SpeechSegment(start=10.0, end=11.0)]
-
-        mock_vad_instance = MagicMock()
-        mock_vad_instance.filter_audio.return_value = (str(filtered_file), speech_segs)
-
-        with patch("whisper.load_model", return_value=mock_model), \
-             patch("app.transcription.vad.VoiceActivityDetector",
-                   return_value=mock_vad_instance), \
-             patch("os.unlink"):
+        with patch("app.transcription.whisper_transcriber.WhisperModel",
+                    return_value=mock_model):
             t = WhisperTranscriber(model_name="base", vad_filter=True)
             result = t.transcribe(str(audio_file))
 
-        # "hello": filtered 0.0 → original 10.0
-        assert result.segments[0].word == "hello"
-        assert result.segments[0].start_time == Decimal("10.0")
-        assert result.segments[0].end_time == Decimal("10.5")
-        # "world": filtered 0.5 → original 10.5, filtered 1.0 → original 11.0
-        assert result.segments[1].word == "world"
-        assert result.segments[1].start_time == Decimal("10.5")
-        assert result.segments[1].end_time == Decimal("11.0")
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert call_kwargs["vad_filter"] is True
+        assert "vad_parameters" in call_kwargs
+        vad_params = call_kwargs["vad_parameters"]
+        assert vad_params["min_speech_duration_ms"] == 250
+        assert vad_params["min_silence_duration_ms"] == 500
+        assert vad_params["speech_pad_ms"] == 100
+        assert vad_params["threshold"] == 0.5
 
-    def test_transcribe_vad_cleans_up_temp_file(self, tmp_path):
-        """filter_audio temp file is deleted after transcription."""
+        # Output still correct
+        assert result.segments[0].word == "hello"
+        assert result.segments[1].word == "world"
+
+    def test_transcribe_vad_no_external_vad_module(self, tmp_path):
+        """vad_filter=True should NOT import or call VoiceActivityDetector."""
         audio_file = tmp_path / "audio.mp3"
         audio_file.write_bytes(b"fake audio")
-        filtered_file = tmp_path / "filtered.wav"
-        filtered_file.write_bytes(b"filtered")
 
-        speech_segs = [SpeechSegment(start=0.0, end=1.0)]
-
+        info = _make_info()
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = {
-            "text": "", "language": "en", "segments": []
-        }
-        mock_vad = MagicMock()
-        mock_vad.filter_audio.return_value = (str(filtered_file), speech_segs)
+        mock_model.transcribe.return_value = (iter([]), info)
 
-        with patch("whisper.load_model", return_value=mock_model), \
-             patch("app.transcription.vad.VoiceActivityDetector",
-                   return_value=mock_vad), \
-             patch("os.unlink") as mock_unlink:
+        with patch("app.transcription.whisper_transcriber.WhisperModel",
+                    return_value=mock_model), \
+             patch("app.transcription.vad.VoiceActivityDetector") as mock_vad_cls:
             t = WhisperTranscriber(model_name="base", vad_filter=True)
             t.transcribe(str(audio_file))
 
-        mock_unlink.assert_called_once_with(str(filtered_file))
-
-    def test_transcribe_vad_no_speech_uses_original(self, tmp_path):
-        """When VAD returns original path (no speech), transcribe proceeds normally."""
-        audio_file = tmp_path / "audio.mp3"
-        audio_file.write_bytes(b"fake audio")
-
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = {
-            "text": "hello", "language": "en",
-            "segments": [
-                {"start": 0.0, "end": 1.0, "words": [
-                    {"word": "hello", "start": 0.0, "end": 1.0}
-                ]}
-            ],
-        }
-        mock_vad = MagicMock()
-        # Returns original path (no filtering done)
-        mock_vad.filter_audio.return_value = (str(audio_file), [])
-
-        with patch("whisper.load_model", return_value=mock_model), \
-             patch("app.transcription.vad.VoiceActivityDetector",
-                   return_value=mock_vad):
-            t = WhisperTranscriber(model_name="base", vad_filter=True)
-            result = t.transcribe(str(audio_file))
-
-        # No remapping — timestamps come through as-is
-        assert result.segments[0].start_time == Decimal("0.0")
-        assert result.segments[0].end_time == Decimal("1.0")
-        # Whisper was called with the original file (not a filtered path)
-        mock_model.transcribe.assert_called_once()
-        assert mock_model.transcribe.call_args[0][0] == str(audio_file)
+        mock_vad_cls.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +307,6 @@ class TestPipelineEnableVAD:
     """Tests for EpisodePipeline enable_vad wiring."""
 
     def test_pipeline_passes_vad_filter_to_transcriber(self):
-        """enable_vad=True should pass vad_filter=True to get_transcriber."""
         from app.pipeline import EpisodePipeline
 
         with patch("app.pipeline.PatreonClient"), \
@@ -370,7 +321,6 @@ class TestPipelineEnableVAD:
         assert kwargs.get("vad_filter") is True
 
     def test_pipeline_vad_disabled_by_default(self):
-        """enable_vad defaults to False."""
         from app.pipeline import EpisodePipeline
 
         with patch("app.pipeline.PatreonClient"), \

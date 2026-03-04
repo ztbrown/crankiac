@@ -1,4 +1,4 @@
-"""Tests for WhisperTranscriber initial_prompt support."""
+"""Tests for WhisperTranscriber (faster-whisper backend)."""
 import pytest
 from unittest.mock import patch, MagicMock
 from decimal import Decimal
@@ -83,26 +83,44 @@ def test_get_transcriber_uses_env_var():
         assert transcriber.model_name == "medium"
 
 
-# Tests for instance-level initial_prompt support
+# --- Mock helpers for faster-whisper return types ---
+
+def _make_word(word, start, end, probability=None):
+    """Create a mock word object with attributes (faster-whisper style)."""
+    w = MagicMock()
+    w.word = word
+    w.start = start
+    w.end = end
+    w.probability = probability
+    return w
+
+
+def _make_segment(words):
+    """Create a mock segment object containing word objects."""
+    seg = MagicMock()
+    seg.words = words
+    return seg
+
+
+def _make_info(language="en", duration=1.0):
+    """Create a mock TranscriptionInfo object."""
+    info = MagicMock()
+    info.language = language
+    info.duration = duration
+    return info
+
 
 @pytest.fixture
-def mock_whisper_model():
-    """Create a mock whisper model with transcribe method."""
+def mock_faster_whisper_model():
+    """Create a mock faster-whisper model."""
     mock_model = MagicMock()
-    mock_model.transcribe.return_value = {
-        "text": "Hello world",
-        "language": "en",
-        "segments": [
-            {
-                "start": 0.0,
-                "end": 1.0,
-                "words": [
-                    {"word": "Hello", "start": 0.0, "end": 0.5},
-                    {"word": "world", "start": 0.5, "end": 1.0},
-                ],
-            }
-        ],
-    }
+    words = [
+        _make_word("Hello", 0.0, 0.5),
+        _make_word("world", 0.5, 1.0),
+    ]
+    segment = _make_segment(words)
+    info = _make_info(language="en", duration=1.0)
+    mock_model.transcribe.return_value = (iter([segment]), info)
     return mock_model
 
 
@@ -119,7 +137,6 @@ class TestWhisperTranscriberInitialPrompt:
     """Tests for initial_prompt parameter handling at instance level."""
 
     def test_init_accepts_initial_prompt(self):
-        """Test that __init__ accepts optional initial_prompt parameter."""
         transcriber = WhisperTranscriber(
             model_name="base",
             initial_prompt="Dan Carlin, Hardcore History"
@@ -127,46 +144,96 @@ class TestWhisperTranscriberInitialPrompt:
         assert transcriber.initial_prompt == "Dan Carlin, Hardcore History"
 
     def test_init_default_initial_prompt_is_none(self):
-        """Test that initial_prompt defaults to None when not provided."""
         transcriber = WhisperTranscriber(model_name="base")
         assert transcriber.initial_prompt is None
 
     def test_transcribe_passes_initial_prompt_to_model(
-        self, mock_whisper_model, temp_audio_file
+        self, mock_faster_whisper_model, temp_audio_file
     ):
-        """Test that transcribe() passes initial_prompt to model.transcribe()."""
-        with patch("whisper.load_model", return_value=mock_whisper_model):
+        with patch("app.transcription.whisper_transcriber.WhisperModel",
+                    return_value=mock_faster_whisper_model):
             transcriber = WhisperTranscriber(
                 model_name="base",
                 initial_prompt="Ben Franklin, Thomas Jefferson"
             )
             transcriber.transcribe(temp_audio_file)
 
-            mock_whisper_model.transcribe.assert_called_once_with(
+            mock_faster_whisper_model.transcribe.assert_called_once_with(
                 temp_audio_file,
-                word_timestamps=True,
                 language="en",
                 condition_on_previous_text=False,
                 initial_prompt="Ben Franklin, Thomas Jefferson",
-                verbose=False,
+                word_timestamps=True,
+                beam_size=5,
+                repetition_penalty=1.2,
+                no_repeat_ngram_size=3,
             )
 
     def test_transcribe_passes_none_initial_prompt_when_not_set(
-        self, mock_whisper_model, temp_audio_file
+        self, mock_faster_whisper_model, temp_audio_file
     ):
-        """Test that transcribe() passes None initial_prompt when not set."""
-        with patch("whisper.load_model", return_value=mock_whisper_model):
+        with patch("app.transcription.whisper_transcriber.WhisperModel",
+                    return_value=mock_faster_whisper_model):
             transcriber = WhisperTranscriber(model_name="base")
             transcriber.transcribe(temp_audio_file)
 
-            mock_whisper_model.transcribe.assert_called_once_with(
+            mock_faster_whisper_model.transcribe.assert_called_once_with(
                 temp_audio_file,
-                word_timestamps=True,
                 language="en",
                 condition_on_previous_text=False,
                 initial_prompt=None,
-                verbose=False,
+                word_timestamps=True,
+                beam_size=5,
+                repetition_penalty=1.2,
+                no_repeat_ngram_size=3,
             )
+
+
+@pytest.mark.unit
+class TestTranscribeOutput:
+    """Tests for transcribe() output construction."""
+
+    def test_transcribe_builds_full_text_from_words(
+        self, mock_faster_whisper_model, temp_audio_file
+    ):
+        with patch("app.transcription.whisper_transcriber.WhisperModel",
+                    return_value=mock_faster_whisper_model):
+            transcriber = WhisperTranscriber(model_name="base")
+            result = transcriber.transcribe(temp_audio_file)
+
+        assert result.full_text == "Hello world"
+        assert len(result.segments) == 2
+        assert result.segments[0].word == "Hello"
+        assert result.segments[1].word == "world"
+
+    def test_transcribe_reads_duration_from_info(self, temp_audio_file):
+        mock_model = MagicMock()
+        info = _make_info(language="en", duration=123.45)
+        mock_model.transcribe.return_value = (iter([]), info)
+
+        with patch("app.transcription.whisper_transcriber.WhisperModel",
+                    return_value=mock_model):
+            transcriber = WhisperTranscriber(model_name="base")
+            result = transcriber.transcribe(temp_audio_file)
+
+        assert result.duration == 123.45
+        assert result.language == "en"
+        assert result.full_text == ""
+        assert result.segments == []
+
+    def test_transcribe_extracts_word_confidence(self, temp_audio_file):
+        words = [_make_word("test", 0.0, 0.5, probability=0.95)]
+        segment = _make_segment(words)
+        info = _make_info()
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = (iter([segment]), info)
+
+        with patch("app.transcription.whisper_transcriber.WhisperModel",
+                    return_value=mock_model):
+            transcriber = WhisperTranscriber(model_name="base")
+            result = transcriber.transcribe(temp_audio_file)
+
+        assert result.segments[0].word_confidence == Decimal("0.95")
 
 
 @pytest.mark.unit
@@ -174,27 +241,21 @@ class TestGetTranscriberWithInitialPrompt:
     """Tests for get_transcriber factory function with initial_prompt."""
 
     def test_get_transcriber_accepts_initial_prompt(self):
-        """Test that get_transcriber accepts and passes through initial_prompt."""
-        with patch("whisper.load_model"):
-            transcriber = get_transcriber(
-                model_name="small",
-                initial_prompt="Proper nouns: Marcus Aurelius, Seneca"
-            )
-            assert transcriber.initial_prompt == "Proper nouns: Marcus Aurelius, Seneca"
-            assert transcriber.model_name == "small"
+        transcriber = get_transcriber(
+            model_name="small",
+            initial_prompt="Proper nouns: Marcus Aurelius, Seneca"
+        )
+        assert transcriber.initial_prompt == "Proper nouns: Marcus Aurelius, Seneca"
+        assert transcriber.model_name == "small"
 
     def test_get_transcriber_default_initial_prompt_is_none(self):
-        """Test that get_transcriber defaults initial_prompt to None."""
-        with patch("whisper.load_model"):
-            transcriber = get_transcriber(model_name="base")
-            assert transcriber.initial_prompt is None
+        transcriber = get_transcriber(model_name="base")
+        assert transcriber.initial_prompt is None
 
     def test_get_transcriber_with_env_model_and_initial_prompt(self):
-        """Test get_transcriber uses env var for model but accepts initial_prompt."""
         with patch.dict("os.environ", {"WHISPER_MODEL": "medium"}):
-            with patch("whisper.load_model"):
-                transcriber = get_transcriber(
-                    initial_prompt="Test vocabulary"
-                )
-                assert transcriber.model_name == "medium"
-                assert transcriber.initial_prompt == "Test vocabulary"
+            transcriber = get_transcriber(
+                initial_prompt="Test vocabulary"
+            )
+            assert transcriber.model_name == "medium"
+            assert transcriber.initial_prompt == "Test vocabulary"
